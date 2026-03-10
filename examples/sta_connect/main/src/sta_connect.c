@@ -21,6 +21,7 @@
 #include "mm_app_regdb.h"
 
 // #define COUNTRY_CODE "AU"
+#define COUNTRY_CODE "US"
 #ifndef COUNTRY_CODE
 #error COUNTRY_CODE must be defined to the appropriate 2 character country code. \
        See mm_app_regdb.c for valid options.
