@@ -1,0 +1,11 @@
+# Build output
+**/build/
+**/build*/
+
+# ESP-IDF generated config/dependency files
+**/sdkconfig
+**/sdkconfig.old
+**/dependencies.lock
+
+# Generated firmware object artifacts
+framework/morsefirmware/*.mbin.o
