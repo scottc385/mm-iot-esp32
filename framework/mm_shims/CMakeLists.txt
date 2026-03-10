@@ -25,7 +25,7 @@ endif()
 
 idf_component_register(INCLUDE_DIRS ${inc}
                        SRCS ${src}
-                       PRIV_REQUIRES morselib spi_flash app_update log driver mbedtls esp_timer
+                       PRIV_REQUIRES morselib spi_flash app_update log driver esp_driver_gpio esp_driver_spi mbedtls esp_timer
                        WHOLE_ARCHIVE)
 
 # Kconfig variables are used to determine which bcf file to add to the final application. The file
