@@ -500,8 +500,12 @@ static void tcpip_init_done_handler(void *arg)
     }
 #endif
 
+#if LWIP_NETIF_LINK_CALLBACK
     netif_set_link_callback(netif, netif_status_callback);
+#endif
+#if LWIP_NETIF_STATUS_CALLBACK
     netif_set_status_callback(netif, netif_status_callback);
+#endif
 
 #if LWIP_IPV6
     err_t result6;
