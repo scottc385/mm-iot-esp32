@@ -99,6 +99,35 @@ static void scan_result_handler(const struct mmwlan_scan_result *result, void *a
            result->bw_mhz, result->op_bw_mhz);
 }
 
+static void scan_complete_handler(enum mmwlan_scan_state scan_state, void *arg)
+{
+    struct mmosal_semb *scan_done_semaphore = (struct mmosal_semb *)arg;
+    const char *desc[] = {
+        "SUCCESSFUL",
+        "TERMINATED",
+        "RUNNING",
+    };
+
+    if (scan_state < (sizeof(desc) / sizeof(desc[0])))
+    {
+        printf("SCAN complete: %s (%u)\n", desc[scan_state], scan_state);
+    }
+    else
+    {
+        printf("SCAN complete: UNKNOWN (%u)\n", scan_state);
+    }
+
+    if (scan_state != MMWLAN_SCAN_RUNNING)
+    {
+        bool ok = mmosal_semb_give(scan_done_semaphore);
+        if (!ok)
+        {
+            printf("Failed to give scan_done_semaphore\n");
+            MMOSAL_ASSERT(false);
+        }
+    }
+}
+
 static void sta_event_handler(const struct mmwlan_sta_event_cb_args *sta_event, void *arg)
 {
     (void)arg;
@@ -176,6 +205,8 @@ void app_main(void)
     const struct mmwlan_s1g_channel_list* channel_list;
     uint8_t mac_addr[MMWLAN_MAC_ADDR_LEN];
     struct mmosal_semb *link_up_semaphore;
+    struct mmosal_semb *scan_done_semaphore;
+    struct mmwlan_scan_req scan_req = MMWLAN_SCAN_REQ_INIT;
     bool ok;
 
     printf("\n\nMorse STA Demo (Built "__DATE__ " " __TIME__ ")\n\n");
@@ -184,6 +215,8 @@ void app_main(void)
      * it in this main thread to block until the link goes up. */
     link_up_semaphore = mmosal_semb_create("link_up");
     MMOSAL_ASSERT(link_up_semaphore != NULL);
+    scan_done_semaphore = mmosal_semb_create("scan_done");
+    MMOSAL_ASSERT(scan_done_semaphore != NULL);
 
     /* Initialize subsystems, note that they must be called in this order. */
     mmhal_init();
@@ -231,6 +264,30 @@ void app_main(void)
     {
         printf("Failed to get MAC address\n");
         MMOSAL_ASSERT(false);
+    }
+
+    /* Perform an explicit scan first so discovery can be debugged independently of association. */
+    scan_req.scan_rx_cb = scan_result_handler;
+    scan_req.scan_complete_cb = scan_complete_handler;
+    scan_req.scan_cb_arg = scan_done_semaphore;
+    scan_req.args.ssid_len = sizeof(SSID) - 1;
+    memcpy(scan_req.args.ssid, SSID, scan_req.args.ssid_len);
+    scan_req.args.dwell_time_ms = 200;
+    scan_req.args.dwell_on_home_ms = 0;
+
+    status = mmwlan_scan_request(&scan_req);
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("Failed to start scan: status %d\n", status);
+        MMOSAL_ASSERT(false);
+    }
+
+    ok = mmosal_semb_wait(scan_done_semaphore, 30000);
+    if (!ok)
+    {
+        printf("Timed out waiting for scan completion\n");
+        status = mmwlan_scan_abort();
+        printf("Scan abort returned status %d\n", status);
     }
 
     /* Set up STA arguments and start connection to AP. */

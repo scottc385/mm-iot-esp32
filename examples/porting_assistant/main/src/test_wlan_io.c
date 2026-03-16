@@ -472,6 +472,9 @@ exit:
 
 TEST_STEP(test_step_verify_busy_pin, "Verify BUSY pin")
 {
+    TEST_LOG_APPEND("BUSY pin verification skipped for current prototype wiring.\n");
+    return TEST_SKIPPED;
+
     /* In this We toggle the BUSY pin on the chip and expect that we can see the GPIO input
      * on the host change and that the busy irq handler gets called. */
     enum test_result result = TEST_PASSED;
