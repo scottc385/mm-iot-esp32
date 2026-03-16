@@ -20,16 +20,14 @@
 #include "mmwlan.h"
 #include "mm_app_regdb.h"
 
-// #define COUNTRY_CODE "AU"
+#define COUNTRY_CODE "US"
 #ifndef COUNTRY_CODE
 #error COUNTRY_CODE must be defined to the appropriate 2 character country code. \
        See mm_app_regdb.c for valid options.
 #endif
 
 /** SSID of the AP to connect to. */
-#define SSID "MorseMicro"
-/** Passphrase of the AP to connect to. Comment out for OWE. */
-#define PASSPHRASE "12345678"
+#define SSID "Halow-pi"
 
 /**
  * Link state callback. This is typically used to signal state to the network stack.
@@ -87,6 +85,43 @@ static void sta_status_handler(enum mmwlan_sta_state sta_state)
         "CONNECTED",
     };
     printf("STA state: %s (%u)\n", sta_state_desc[sta_state], sta_state);
+}
+
+static void scan_result_handler(const struct mmwlan_scan_result *result, void *arg)
+{
+    (void)arg;
+
+    printf("SCAN ssid='%.*s' bssid=%02x:%02x:%02x:%02x:%02x:%02x rssi=%d freq=%lu bw=%u op_bw=%u\n",
+           result->ssid_len, result->ssid,
+           result->bssid[0], result->bssid[1], result->bssid[2],
+           result->bssid[3], result->bssid[4], result->bssid[5],
+           result->rssi, (unsigned long)result->channel_freq_hz,
+           result->bw_mhz, result->op_bw_mhz);
+}
+
+static void sta_event_handler(const struct mmwlan_sta_event_cb_args *sta_event, void *arg)
+{
+    (void)arg;
+
+    static const char *event_desc[] = {
+        "SCAN_REQUEST",
+        "SCAN_COMPLETE",
+        "SCAN_ABORT",
+        "AUTH_REQUEST",
+        "ASSOC_REQUEST",
+        "DEAUTH_TX",
+        "CTRL_PORT_OPEN",
+        "CTRL_PORT_CLOSED",
+    };
+
+    if (sta_event->event < (sizeof(event_desc) / sizeof(event_desc[0])))
+    {
+        printf("STA event: %s (%u)\n", event_desc[sta_event->event], sta_event->event);
+    }
+    else
+    {
+        printf("STA event: UNKNOWN (%u)\n", sta_event->event);
+    }
 }
 
 void app_print_version_info(void)
@@ -201,15 +236,11 @@ void app_main(void)
     /* Set up STA arguments and start connection to AP. */
     sta_args.ssid_len = sizeof(SSID) - 1;
     memcpy(sta_args.ssid, SSID, sta_args.ssid_len);
-#ifdef PASSPHRASE
-    sta_args.passphrase_len = sizeof(PASSPHRASE) - 1;
-    memcpy(sta_args.passphrase, PASSPHRASE, sta_args.passphrase_len);
-    sta_args.security_type = MMWLAN_SAE;
-#else
-    /* We default to OWE if PASSPHRASE is not defined. Alternatively, MMWLAN_OPEN is provided
-     * to completely disable security. */
-    sta_args.security_type = MMWLAN_OWE;
-#endif
+    /* Connect to an open AP with PMF disabled to match the current Pi test AP. */
+    sta_args.security_type = MMWLAN_OPEN;
+    sta_args.pmf_mode = MMWLAN_PMF_DISABLED;
+    sta_args.scan_rx_cb = scan_result_handler;
+    sta_args.sta_evt_cb = sta_event_handler;
     status = mmwlan_sta_enable(&sta_args, sta_status_handler);
     if (status != MMWLAN_SUCCESS)
     {

@@ -30,9 +30,9 @@
 #endif
 
 /** SSID of the AP to connect to. */
-#define SSID "MorseMicro"
+#define SSID "Halow-pi"
 /** Passphrase of the AP to connect to. Comment out for OWE. */
-#define PASSPHRASE "12345678"
+#define PASSPHRASE "Halow-pi"
 
 /** Delay before triggering another instance of the reboot iteration */
 #define REBOOT_DELAY_MS 50

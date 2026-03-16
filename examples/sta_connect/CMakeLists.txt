@@ -8,6 +8,10 @@ endif()
 
 message(STATUS "MMIOT_ROOT: $ENV{MMIOT_ROOT}")
 
+if(NOT DEFINED COUNTRY_CODE)
+    set(COUNTRY_CODE US)
+endif()
+
 if(DEFINED COUNTRY_CODE)
     message (Using country code: ${COUNTRY_CODE})
     add_compile_definitions(COUNTRY_CODE="${COUNTRY_CODE}")

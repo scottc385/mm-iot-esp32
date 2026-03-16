@@ -34,14 +34,14 @@
 /* Default SSID  */
 #ifndef SSID
 /** SSID of the AP to connect to. (Do not quote; it will be stringified.) */
-#define SSID                            MorseMicro
+#define SSID                            Halow-pi
 #endif
 
 /* Default passphrase  */
 #ifndef SAE_PASSPHRASE
 /** Passphrase of the AP (ignored if security type is not SAE).
  *  (Do not quote; it will be stringified.) */
-#define SAE_PASSPHRASE                  12345678
+#define SAE_PASSPHRASE                  Halow-pi
 #endif
 
 /* Default security type  */
