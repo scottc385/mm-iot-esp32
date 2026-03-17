@@ -16,7 +16,9 @@
 #include <string.h>
 #include "mmhal.h"
 #include "mmosal.h"
+#include "mmhal_wlan.h"
 #include "mmwlan.h"
+#include "mmwlan_stats.h"
 #include "mm_app_regdb.h"
 
 #define COUNTRY_CODE "US"
@@ -47,6 +49,28 @@
 
 /** Number of results found. */
 static int num_scan_results;
+
+static void dump_umac_stats(const char *tag)
+{
+    enum mmwlan_status status;
+    struct mmwlan_stats_umac_data stats = {0};
+
+    status = mmwlan_get_umac_stats(&stats);
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("UMAC stats unavailable at %s: status %d\n", tag, status);
+        return;
+    }
+
+    printf("UMAC stats [%s]: scans_complete=%u hw_restarts=%u timeouts=%lu scan_req_ts=%lu scan_complete_ts=%lu rssi=%d\n",
+           tag, stats.num_scans_complete, stats.hw_restart_counter,
+           (unsigned long)stats.timeouts_fired,
+           (unsigned long)stats.connect_timestamp[MMWLAN_STATS_CONNECT_TIMESTAMP_SCAN_REQUESTED],
+           (unsigned long)stats.connect_timestamp[MMWLAN_STATS_CONNECT_TIMESTAMP_SCAN_COMPLETE],
+           stats.rssi);
+}
+
+extern void mmhal_wlan_debug_dump_counters(void);
 
 /** Enumeration of Authentication Key Management (AKM) Suite OUIs as BE32 integers. */
 enum akm_suite_oui
@@ -300,9 +324,9 @@ static void scan_rx_callback(const struct mmwlan_scan_result *result, void *arg)
  */
 static void scan_complete_callback(enum mmwlan_scan_state state, void *arg)
 {
-    (void)(state);
     (void)(arg);
-    printf("Scanning completed.\n");
+    printf("Scanning completed with state %u.\n", state);
+    dump_umac_stats("scan_complete");
 }
 
 void app_print_version_info(void)
@@ -380,6 +404,19 @@ void app_main(void)
     (void)mmwlan_boot(&boot_args);
     app_print_version_info();
 
+    status = mmwlan_set_power_save_mode(MMWLAN_PS_DISABLED);
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("Failed to disable power save: status %d\n", status);
+        MMOSAL_ASSERT(false);
+    }
+
+    status = mmwlan_clear_umac_stats();
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("Failed to clear UMAC stats: status %d\n", status);
+    }
+
     num_scan_results = 0;
     struct mmwlan_scan_req scan_req = MMWLAN_SCAN_REQ_INIT;
     scan_req.scan_rx_cb = scan_rx_callback;
@@ -387,4 +424,11 @@ void app_main(void)
     status = mmwlan_scan_request(&scan_req);
     MMOSAL_ASSERT(status == MMWLAN_SUCCESS);
     printf("Scan started on %s channels, Waiting for results...\n", channel_list->country_code);
+
+    for (;;)
+    {
+        mmosal_task_sleep(5000);
+        dump_umac_stats("poll");
+        mmhal_wlan_debug_dump_counters();
+    }
 }

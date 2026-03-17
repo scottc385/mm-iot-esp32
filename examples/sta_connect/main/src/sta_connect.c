@@ -18,6 +18,7 @@
 #include "mmhal.h"
 #include "mmosal.h"
 #include "mmwlan.h"
+#include "mmwlan_stats.h"
 #include "mm_app_regdb.h"
 
 #define COUNTRY_CODE "US"
@@ -28,6 +29,28 @@
 
 /** SSID of the AP to connect to. */
 #define SSID "Halow-pi"
+
+static unsigned scan_result_count;
+
+static void dump_umac_stats(const char *tag)
+{
+    enum mmwlan_status status;
+    struct mmwlan_stats_umac_data stats = {0};
+
+    status = mmwlan_get_umac_stats(&stats);
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("UMAC stats unavailable at %s: status %d\n", tag, status);
+        return;
+    }
+
+    printf("UMAC stats [%s]: scans_complete=%u hw_restarts=%u timeouts=%lu scan_req_ts=%lu scan_complete_ts=%lu rssi=%d\n",
+           tag, stats.num_scans_complete, stats.hw_restart_counter,
+           (unsigned long)stats.timeouts_fired,
+           (unsigned long)stats.connect_timestamp[MMWLAN_STATS_CONNECT_TIMESTAMP_SCAN_REQUESTED],
+           (unsigned long)stats.connect_timestamp[MMWLAN_STATS_CONNECT_TIMESTAMP_SCAN_COMPLETE],
+           stats.rssi);
+}
 
 /**
  * Link state callback. This is typically used to signal state to the network stack.
@@ -90,6 +113,7 @@ static void sta_status_handler(enum mmwlan_sta_state sta_state)
 static void scan_result_handler(const struct mmwlan_scan_result *result, void *arg)
 {
     (void)arg;
+    scan_result_count++;
 
     printf("SCAN ssid='%.*s' bssid=%02x:%02x:%02x:%02x:%02x:%02x rssi=%d freq=%lu bw=%u op_bw=%u\n",
            result->ssid_len, result->ssid,
@@ -116,6 +140,9 @@ static void scan_complete_handler(enum mmwlan_scan_state scan_state, void *arg)
     {
         printf("SCAN complete: UNKNOWN (%u)\n", scan_state);
     }
+
+    printf("SCAN result count: %u\n", scan_result_count);
+    dump_umac_stats("explicit_scan_complete");
 
     if (scan_state != MMWLAN_SCAN_RUNNING)
     {
@@ -146,6 +173,16 @@ static void sta_event_handler(const struct mmwlan_sta_event_cb_args *sta_event, 
     if (sta_event->event < (sizeof(event_desc) / sizeof(event_desc[0])))
     {
         printf("STA event: %s (%u)\n", event_desc[sta_event->event], sta_event->event);
+        if (sta_event->event == MMWLAN_STA_EVT_SCAN_REQUEST)
+        {
+            scan_result_count = 0;
+            dump_umac_stats("sta_scan_request");
+        }
+        else if (sta_event->event == MMWLAN_STA_EVT_SCAN_COMPLETE)
+        {
+            printf("STA scan result count: %u\n", scan_result_count);
+            dump_umac_stats("sta_scan_complete");
+        }
     }
     else
     {
@@ -259,6 +296,19 @@ void app_main(void)
     (void)mmwlan_boot(&boot_args);
     app_print_version_info();
 
+    status = mmwlan_set_power_save_mode(MMWLAN_PS_DISABLED);
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("Failed to disable power save: status %d\n", status);
+        MMOSAL_ASSERT(false);
+    }
+
+    status = mmwlan_clear_umac_stats();
+    if (status != MMWLAN_SUCCESS)
+    {
+        printf("Failed to clear UMAC stats: status %d\n", status);
+    }
+
     status = mmwlan_get_mac_addr(mac_addr);
     if (status != MMWLAN_SUCCESS)
     {
@@ -274,6 +324,7 @@ void app_main(void)
     memcpy(scan_req.args.ssid, SSID, scan_req.args.ssid_len);
     scan_req.args.dwell_time_ms = 200;
     scan_req.args.dwell_on_home_ms = 0;
+    scan_result_count = 0;
 
     status = mmwlan_scan_request(&scan_req);
     if (status != MMWLAN_SUCCESS)

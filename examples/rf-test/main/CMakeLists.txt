@@ -8,4 +8,4 @@ set(inc
 
 idf_component_register(INCLUDE_DIRS ${inc}
                        SRCS ${src}
-                       PRIV_REQUIRES driver morselib mm_shims mmutils)
+                       PRIV_REQUIRES driver esp_driver_gpio esp_driver_uart morselib mm_shims mmutils)

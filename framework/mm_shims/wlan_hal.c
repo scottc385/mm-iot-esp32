@@ -27,6 +27,38 @@ static mmhal_irq_handler_t spi_irq_handler = NULL;
 static mmhal_irq_handler_t busy_irq_handler = NULL;
 
 static spi_device_handle_t spi_handle;
+static volatile uint32_t busy_read_count = 0;
+static volatile uint32_t busy_high_count = 0;
+static volatile uint32_t busy_irq_enable_count = 0;
+static volatile uint32_t busy_irq_disable_count = 0;
+static volatile uint32_t spi_irq_read_count = 0;
+static volatile uint32_t spi_irq_asserted_count = 0;
+static volatile uint32_t spi_irq_enable_count = 0;
+static volatile uint32_t spi_irq_disable_count = 0;
+static volatile uint32_t spi_irq_isr_count = 0;
+static volatile uint32_t wake_assert_count = 0;
+static volatile uint32_t wake_deassert_count = 0;
+static volatile uint32_t busy_irq_isr_count = 0;
+
+static void IRAM_ATTR spi_irq_handler_wrapper(void *arg)
+{
+    (void)arg;
+    spi_irq_isr_count++;
+    if (spi_irq_handler != NULL)
+    {
+        spi_irq_handler();
+    }
+}
+
+static void IRAM_ATTR busy_irq_handler_wrapper(void *arg)
+{
+    (void)arg;
+    busy_irq_isr_count++;
+    if (busy_irq_handler != NULL)
+    {
+        busy_irq_handler();
+    }
+}
 
 static void wlan_hal_gpio_init(void)
 {
@@ -52,6 +84,7 @@ static void wlan_hal_gpio_init(void)
     io_conf.pin_bit_mask = (1ull << CONFIG_MM_SPI_IRQ);
     io_conf.pull_down_en = 0;
     gpio_config(&io_conf);
+
 }
 
 static void wlan_hal_spi_init(void)
@@ -206,22 +239,31 @@ void mmhal_wlan_send_training_seq(void)
 void mmhal_wlan_register_spi_irq_handler(mmhal_irq_handler_t handler)
 {
     spi_irq_handler = handler;
-    gpio_isr_handler_add(CONFIG_MM_SPI_IRQ, (gpio_isr_t)spi_irq_handler, NULL);
+    gpio_isr_handler_add(CONFIG_MM_SPI_IRQ, spi_irq_handler_wrapper, NULL);
 }
 
 bool mmhal_wlan_spi_irq_is_asserted(void)
 {
-    return !gpio_get_level(CONFIG_MM_SPI_IRQ);
+    int level = gpio_get_level(CONFIG_MM_SPI_IRQ);
+    spi_irq_read_count++;
+    if (!level)
+    {
+        spi_irq_asserted_count++;
+    }
+
+    return !level;
 }
 
 void mmhal_wlan_set_spi_irq_enabled(bool enabled)
 {
     if (enabled)
     {
+        spi_irq_enable_count++;
         gpio_set_intr_type(CONFIG_MM_SPI_IRQ, GPIO_INTR_LOW_LEVEL);
     }
     else
     {
+        spi_irq_disable_count++;
         gpio_set_intr_type(CONFIG_MM_SPI_IRQ, GPIO_INTR_DISABLE);
     }
 }
@@ -251,32 +293,60 @@ void mmhal_wlan_deinit(void)
 void mmhal_wlan_wake_assert(void)
 {
     gpio_set_level(CONFIG_MM_WAKE, 1);
+    wake_assert_count++;
 }
 
 void mmhal_wlan_wake_deassert(void)
 {
     gpio_set_level(CONFIG_MM_WAKE, 0);
+    wake_deassert_count++;
 }
 
 bool mmhal_wlan_busy_is_asserted(void)
 {
-    return gpio_get_level(CONFIG_MM_BUSY);
+    int level = gpio_get_level(CONFIG_MM_BUSY);
+    busy_read_count++;
+    if (level)
+    {
+        busy_high_count++;
+    }
+
+    return level;
 }
 
 void mmhal_wlan_register_busy_irq_handler(mmhal_irq_handler_t handler)
 {
     busy_irq_handler = handler;
-    gpio_isr_handler_add(CONFIG_MM_BUSY, (gpio_isr_t)busy_irq_handler, NULL);
+    gpio_isr_handler_add(CONFIG_MM_BUSY, busy_irq_handler_wrapper, NULL);
 }
 
 void mmhal_wlan_set_busy_irq_enabled(bool enabled)
 {
     if (enabled)
     {
+        busy_irq_enable_count++;
         gpio_set_intr_type(CONFIG_MM_BUSY, GPIO_INTR_POSEDGE);
     }
     else
     {
+        busy_irq_disable_count++;
         gpio_set_intr_type(CONFIG_MM_BUSY, GPIO_INTR_DISABLE);
     }
+}
+
+void mmhal_wlan_debug_dump_counters(void)
+{
+    printf("HAL counters: wake_assert=%lu wake_deassert=%lu busy_reads=%lu busy_high=%lu busy_irq_en=%lu busy_irq_dis=%lu busy_irq_isr=%lu spi_irq_reads=%lu spi_irq_asserted=%lu spi_irq_en=%lu spi_irq_dis=%lu spi_irq_isr=%lu\n",
+           (unsigned long)wake_assert_count,
+           (unsigned long)wake_deassert_count,
+           (unsigned long)busy_read_count,
+           (unsigned long)busy_high_count,
+           (unsigned long)busy_irq_enable_count,
+           (unsigned long)busy_irq_disable_count,
+           (unsigned long)busy_irq_isr_count,
+           (unsigned long)spi_irq_read_count,
+           (unsigned long)spi_irq_asserted_count,
+           (unsigned long)spi_irq_enable_count,
+           (unsigned long)spi_irq_disable_count,
+           (unsigned long)spi_irq_isr_count);
 }
