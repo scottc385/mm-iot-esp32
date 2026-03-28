@@ -67,6 +67,34 @@ enum iperf_type
 
 /** Array of power of 10 unit specifiers. */
 static const char units[] = {' ', 'K', 'M', 'G', 'T'};
+static mmiperf_handle_t g_iperf_handle = NULL;
+
+static const char *report_type_str(enum mmiperf_report_type type)
+{
+    switch (type)
+    {
+    case MMIPERF_TCP_DONE_SERVER:
+        return "TCP_DONE_SERVER";
+    case MMIPERF_TCP_DONE_CLIENT:
+        return "TCP_DONE_CLIENT";
+    case MMIPERF_TCP_ABORTED_LOCAL:
+        return "TCP_ABORTED_LOCAL";
+    case MMIPERF_TCP_ABORTED_LOCAL_DATAERROR:
+        return "TCP_ABORTED_LOCAL_DATAERROR";
+    case MMIPERF_TCP_ABORTED_LOCAL_TXERROR:
+        return "TCP_ABORTED_LOCAL_TXERROR";
+    case MMIPERF_TCP_ABORTED_REMOTE:
+        return "TCP_ABORTED_REMOTE";
+    case MMIPERF_UDP_DONE_SERVER:
+        return "UDP_DONE_SERVER";
+    case MMIPERF_UDP_DONE_CLIENT:
+        return "UDP_DONE_CLIENT";
+    case MMIPERF_INTERRIM_REPORT:
+        return "INTERRIM_REPORT";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 /**
  * Function to format a given number of bytes into an appropriate SI base. I.e if you give it 1400
@@ -111,11 +139,16 @@ static void iperf_report_handler(const struct mmiperf_report *report, void *arg,
                                                         &bytes_transferred_unit_index);
 
     printf("\nIperf Report\n");
+    printf("  Report Type: %s (%d)\n", report_type_str(report->report_type), report->report_type);
     printf("  Remote Address: %s:%d\n", report->remote_addr, report->remote_port);
     printf("  Local Address:  %s:%d\n", report->local_addr, report->local_port);
     printf("  Transferred: %lu %cBytes, duration: %lu ms, bandwidth: %lu kbps\n",
            bytes_transferred_formatted, units[bytes_transferred_unit_index],
            report->duration_ms, report->bandwidth_kbitpsec);
+    printf("  UDP Frames: tx=%lu rx=%lu out_of_sequence=%lu errors=%lu ipg_count=%lu ipg_sum_ms=%lu\n",
+           (unsigned long)report->tx_frames, (unsigned long)report->rx_frames,
+           (unsigned long)report->out_of_sequence_frames, (unsigned long)report->error_count,
+           (unsigned long)report->ipg_count, (unsigned long)report->ipg_sum_ms);
     printf("\n");
 
     if ((report->report_type == MMIPERF_UDP_DONE_SERVER) ||
@@ -146,7 +179,7 @@ static void start_tcp_client(void)
     }
     args.report_fn = iperf_report_handler;
 
-    mmiperf_start_tcp_client(&args);
+    g_iperf_handle = mmiperf_start_tcp_client(&args);
     printf("\nIperf TCP client started, waiting for completion...\n");
 }
 
@@ -169,7 +202,7 @@ static void start_udp_client(void)
     }
     args.report_fn = iperf_report_handler;
 
-    mmiperf_start_udp_client(&args);
+    g_iperf_handle = mmiperf_start_udp_client(&args);
     printf("\nIperf UDP client started, waiting for completion...\n");
 }
 
@@ -183,8 +216,8 @@ static void start_tcp_server(void)
 
     args.report_fn = iperf_report_handler;
 
-    mmiperf_handle_t iperf_handle = mmiperf_start_tcp_server(&args);
-    if (iperf_handle == NULL)
+    g_iperf_handle = mmiperf_start_tcp_server(&args);
+    if (g_iperf_handle == NULL)
     {
         printf("Failed to get local address\n");
         return;
@@ -218,8 +251,8 @@ static void start_udp_server(void)
 
     args.report_fn = iperf_report_handler;
 
-    mmiperf_handle_t iperf_handle = mmiperf_start_udp_server(&args);
-    if (iperf_handle == NULL)
+    g_iperf_handle = mmiperf_start_udp_server(&args);
+    if (g_iperf_handle == NULL)
     {
         printf("Failed to start iperf server\n");
         return;
@@ -275,5 +308,23 @@ void app_main(void)
     case IPERF_TCP_CLIENT:
         start_tcp_client();
         break;
+    }
+
+    while (true)
+    {
+        struct mmiperf_report report;
+        mmosal_task_sleep(5000);
+        printf("iperf heartbeat: handle=%p\n", (void *)g_iperf_handle);
+        if (g_iperf_handle != NULL && mmiperf_get_interim_report(g_iperf_handle, &report))
+        {
+            printf("interim report: type=%s (%d) bytes=%llu duration_ms=%lu bw_kbps=%lu tx=%lu rx=%lu errors=%lu\n",
+                   report_type_str(report.report_type), report.report_type,
+                   (unsigned long long)report.bytes_transferred,
+                   (unsigned long)report.duration_ms,
+                   (unsigned long)report.bandwidth_kbitpsec,
+                   (unsigned long)report.tx_frames,
+                   (unsigned long)report.rx_frames,
+                   (unsigned long)report.error_count);
+        }
     }
 }
