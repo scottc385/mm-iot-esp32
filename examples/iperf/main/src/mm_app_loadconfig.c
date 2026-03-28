@@ -21,7 +21,7 @@
 #include "mm_app_regdb.h"
 
 
-// #define COUNTRY_CODE "AU"
+#define COUNTRY_CODE "US"
 #ifndef COUNTRY_CODE
 #error COUNTRY_CODE must be defined to the appropriate 2 character country code. \
        See mm_app_regdb.c for valid options.
@@ -38,16 +38,10 @@
 #endif
 
 /* Default passphrase  */
-#ifndef SAE_PASSPHRASE
-/** Passphrase of the AP (ignored if security type is not SAE).
- *  (Do not quote; it will be stringified.) */
-#define SAE_PASSPHRASE                  Halow-pi
-#endif
-
 /* Default security type  */
 #ifndef SECURITY_TYPE
 /** Security type (@see mmwlan_security_type). */
-#define SECURITY_TYPE                   MMWLAN_SAE
+#define SECURITY_TYPE                   MMWLAN_OPEN
 #endif
 
 /* Configure the STA to use DHCP, this overrides any static configuration.
@@ -149,10 +143,8 @@ void load_mmwlan_sta_args(struct mmwlan_sta_args *sta_config)
     (void)mmosal_safer_strcpy((char*)sta_config->ssid, STRINGIFY(SSID), sizeof(sta_config->ssid));
     sta_config->ssid_len = strlen((char*)sta_config->ssid);
 
-    /* Load password */
-    (void)mmosal_safer_strcpy(sta_config->passphrase, STRINGIFY(SAE_PASSPHRASE),
-                              sizeof(sta_config->passphrase));
-    sta_config->passphrase_len = strlen(sta_config->passphrase);
+    sta_config->passphrase[0] = '\0';
+    sta_config->passphrase_len = 0;
 
     /* Load security type */
     sta_config->security_type = SECURITY_TYPE;

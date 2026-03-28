@@ -119,6 +119,7 @@ void app_wlan_init(void)
     /* Initialize Morse subsystems, note that they must be called in this order. */
     mmhal_init();
     mmwlan_init();
+    mmwlan_set_power_save_mode(MMWLAN_PS_DISABLED);
 
     mmwlan_set_channel_list(load_channel_list());
 
