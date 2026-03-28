@@ -70,6 +70,12 @@ static void dump_umac_stats(const char *tag)
            stats.rssi);
 }
 
+static void print_scan_signal_summary(const struct mmwlan_scan_result *result)
+{
+    printf("    Signal summary: RSSI=%d dBm, SNR=n/a (noise not exposed by this SDK)\n",
+           result->rssi);
+}
+
 extern void mmhal_wlan_debug_dump_counters(void);
 
 /** Enumeration of Authentication Key Management (AKM) Suite OUIs as BE32 integers. */
@@ -292,6 +298,7 @@ static void scan_rx_callback(const struct mmwlan_scan_result *result, void *arg)
     printf("    Operating BW: %u MHz\n",  result->op_bw_mhz);
     printf("    BSSID: %s\n", bssid_str);
     printf("    RSSI: %3d\n", result->rssi);
+    print_scan_signal_summary(result);
     printf("    Beacon Interval(TUs): %u\n", result->beacon_interval);
     printf("    Capability Info: 0x%04x\n", result->capability_info);
 

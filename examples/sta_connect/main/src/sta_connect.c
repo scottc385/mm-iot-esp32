@@ -52,6 +52,26 @@ static void dump_umac_stats(const char *tag)
            stats.rssi);
 }
 
+static void print_scan_signal_summary(const struct mmwlan_scan_result *result)
+{
+    printf("SCAN signal summary: RSSI=%d dBm, SNR=n/a (noise not exposed by this SDK)\n",
+           result->rssi);
+}
+
+static void dump_link_rssi(const char *tag)
+{
+    int32_t rssi = mmwlan_get_rssi();
+
+    if (rssi == INT32_MIN)
+    {
+        printf("Link RSSI [%s]: unavailable\n", tag);
+        return;
+    }
+
+    printf("Link RSSI [%s]: %ld dBm, SNR=n/a (noise not exposed by this SDK)\n",
+           tag, (long)rssi);
+}
+
 /**
  * Link state callback. This is typically used to signal state to the network stack.
  */
@@ -121,6 +141,7 @@ static void scan_result_handler(const struct mmwlan_scan_result *result, void *a
            result->bssid[3], result->bssid[4], result->bssid[5],
            result->rssi, (unsigned long)result->channel_freq_hz,
            result->bw_mhz, result->op_bw_mhz);
+    print_scan_signal_summary(result);
 }
 
 static void scan_complete_handler(enum mmwlan_scan_state scan_state, void *arg)
@@ -380,5 +401,12 @@ void app_main(void)
     {
         printf("TX failed with status %d\n", status);
         MMOSAL_ASSERT(false);
+    }
+
+    while (true)
+    {
+        mmosal_task_sleep(5000);
+        dump_link_rssi("connected");
+        dump_umac_stats("connected");
     }
 }
