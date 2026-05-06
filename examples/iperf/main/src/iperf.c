@@ -47,7 +47,7 @@ enum iperf_type
 
 #ifndef IPERF_SERVER_IP
 /** IP address of server to connect to when in client mode. */
-#define IPERF_SERVER_IP                 "192.168.1.1"
+#define IPERF_SERVER_IP                 "192.168.50.1"
 #endif
 
 #ifndef IPERF_TIME_AMOUNT

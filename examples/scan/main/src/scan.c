@@ -27,6 +27,18 @@
        See mm_app_regdb.c for valid options.
 #endif
 
+/* Narrow RF-debug scans to one AP channel so channel/BW tests are deterministic. */
+static const struct mmwlan_s1g_channel scan_test_channels[] = {
+    /* 908.5 MHz, US S1G channel 13, 1 MHz operating bandwidth. */
+    { 908500000, 10000, false, 68, 1, 13, 1, 36, 0, 0, 0 },
+};
+
+static const struct mmwlan_s1g_channel_list scan_test_channel_list = {
+    .country_code = "US",
+    .num_channels = (sizeof(scan_test_channels) / sizeof(scan_test_channels[0])),
+    .channels = scan_test_channels,
+};
+
 /*
  * If ASNI_ESCAPE_ENABLED is non-zero (the default) then ANSI escape characters will be used to
  *  format the log output.
@@ -342,7 +354,7 @@ void app_print_version_info(void)
     struct mmwlan_version version = {0};
     struct mmwlan_bcf_metadata bcf_metadata = {0};
 
-    printf("-----------------------------------\n");
+    printf("----------------------------------- HC01 - 1\n");
 
     status = mmwlan_get_bcf_metadata(&bcf_metadata);
     if (status == MMWLAN_SUCCESS)
@@ -392,17 +404,11 @@ void app_main(void)
     mmhal_init();
     mmwlan_init();
 
-    channel_list = mmwlan_lookup_regulatory_domain(get_regulatory_db(), COUNTRY_CODE);
-    if (channel_list == NULL)
-    {
-        printf("Could not find specified regulatory domain matching country code %s\n",
-               COUNTRY_CODE);
-        MMOSAL_ASSERT(false);
-    }
+    channel_list = &scan_test_channel_list;
     status = mmwlan_set_channel_list(channel_list);
     if (status != MMWLAN_SUCCESS)
     {
-        printf("Failed to set country code %s\n", channel_list->country_code);
+        printf("Failed to set scan channel list: channel=13 freq=908500000Hz bw=1MHz\n");
         MMOSAL_ASSERT(false);
     }
 
@@ -430,7 +436,8 @@ void app_main(void)
     scan_req.scan_complete_cb = scan_complete_callback;
     status = mmwlan_scan_request(&scan_req);
     MMOSAL_ASSERT(status == MMWLAN_SUCCESS);
-    printf("Scan started on %s channels, Waiting for results...\n", channel_list->country_code);
+    printf("Scan started on %s test channel: channel=13 freq=908500000Hz bw=1MHz, Waiting for results...\n",
+           channel_list->country_code);
 
     for (;;)
     {

@@ -1,4 +1,6 @@
 examples/*/build/
+examples/*/build-*/
+examples/*/temp/
 examples/*/dependencies.lock
 examples/*/sdkconfig
 examples/*/sdkconfig.old

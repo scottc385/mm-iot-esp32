@@ -68,6 +68,83 @@
 #define STATIC_LOCAL_IP6                 "FE80::2"
 #endif
 
+/*
+ * Narrow RF/debug iperf attempts to the same explicit channel sets used by
+ * sta_connect. This avoids relying on a full regulatory-domain scan while
+ * sweeping the Pi AP through channel/BW combinations.
+ */
+#define IPERF_TEST_PRESET_1MHZ_LOW   1
+#define IPERF_TEST_PRESET_1MHZ_MID   2
+#define IPERF_TEST_PRESET_1MHZ_HIGH  3
+#define IPERF_TEST_PRESET_2MHZ_MID   4
+#define IPERF_TEST_PRESET_2MHZ_HIGH  5
+#define IPERF_TEST_PRESET_4MHZ_LOW   6
+#define IPERF_TEST_PRESET_4MHZ_MID   7
+#define IPERF_TEST_PRESET_4MHZ_HIGH  8
+
+/* Default: channel 13, 908.5 MHz, 1 MHz. */
+#ifndef IPERF_TEST_CHANNEL_PRESET
+#define IPERF_TEST_CHANNEL_PRESET IPERF_TEST_PRESET_1MHZ_LOW
+#endif
+
+#if IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_1MHZ_LOW
+#define IPERF_TEST_CHANNEL_LABEL "channel=13 freq=908500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 908500000, 10000, false, 68, 1, 13, 1, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_1MHZ_MID
+#define IPERF_TEST_CHANNEL_LABEL "channel=25 freq=914500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_1MHZ_HIGH
+#define IPERF_TEST_CHANNEL_LABEL "channel=41 freq=922500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_2MHZ_MID
+#define IPERF_TEST_CHANNEL_LABEL "channel=26 freq=915000000Hz bw=2MHz primary=channel25/914500000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+    { 915000000, 10000, false, 69, 2, 26, 2, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_2MHZ_HIGH
+#define IPERF_TEST_CHANNEL_LABEL "channel=42 freq=923000000Hz bw=2MHz primary=channel41/922500000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_4MHZ_LOW
+#define IPERF_TEST_CHANNEL_LABEL "channel=24 freq=914000000Hz bw=4MHz primary=channel26/915000000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+    { 915000000, 10000, false, 69, 2, 26, 2, 36, 0, 0, 0 },
+    { 914000000, 10000, false, 70, 3, 24, 4, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_4MHZ_MID
+#define IPERF_TEST_CHANNEL_LABEL "channel=32 freq=918000000Hz bw=4MHz primary=channel34/919000000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 918500000, 10000, false, 68, 1, 33, 1, 36, 0, 0, 0 },
+    { 919000000, 10000, false, 69, 2, 34, 2, 36, 0, 0, 0 },
+    { 918000000, 10000, false, 70, 3, 32, 4, 36, 0, 0, 0 },
+};
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_4MHZ_HIGH
+#define IPERF_TEST_CHANNEL_LABEL "channel=40 freq=922000000Hz bw=4MHz primary=channel42/923000000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+    { 922000000, 10000, false, 70, 3, 40, 4, 36, 0, 0, 0 },
+};
+#else
+#error Unsupported IPERF_TEST_CHANNEL_PRESET
+#endif
+
+static const struct mmwlan_s1g_channel_list iperf_test_channel_list = {
+    .country_code = "US",
+    .num_channels = (sizeof(iperf_test_channels) / sizeof(iperf_test_channels[0])),
+    .channels = iperf_test_channels,
+};
+
 
 /** Stringify macro. Do not use directly; use @ref STRINGIFY(). */
 #define _STRINGIFY(x) #x
@@ -122,19 +199,9 @@ void load_mmipal_init_args(struct mmipal_init_args *args)
 
 const struct mmwlan_s1g_channel_list* load_channel_list(void)
 {
-    char strval[16];
-    const struct mmwlan_s1g_channel_list *channel_list;
-
-    /* Set the default channel list in case country code is not found */
-    (void)mmosal_safer_strcpy(strval, COUNTRY_CODE, sizeof(strval));
-    channel_list = mmwlan_lookup_regulatory_domain(get_regulatory_db(), strval);
-    if (channel_list == NULL)
-    {
-        printf("Could not find specified regulatory domain matching country code %s\n", strval);
-        printf("Please set the configuration key wlan.country_code to the correct country code.\n");
-        MMOSAL_ASSERT(false);
-    }
-    return channel_list;
+    printf("IPERF test channel: country=%s " IPERF_TEST_CHANNEL_LABEL "\n",
+           iperf_test_channel_list.country_code);
+    return &iperf_test_channel_list;
 }
 
 void load_mmwlan_sta_args(struct mmwlan_sta_args *sta_config)

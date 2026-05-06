@@ -1,0 +1,21 @@
+#
+# ESP32-S3 + Heltec HT-HC01P carrier test profile.
+#
+# Heltec documents HT-HC01P as requiring bcf_mf08551.bin; this SDK ships the
+# equivalent mbin as bcf_mf08551.mbin.
+#
+# The GPIOs below match the current Seeed XIAO ESP32-S3 wiring used in this
+# workspace. Change them if the HT-HC01P carrier is wired to different ESP32
+# GPIOs.
+#
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_MM_BCF_FILE="bcf_mf08551.mbin"
+CONFIG_MM_FW_FILE="mm6108.mbin"
+CONFIG_MM_RESET_N=1
+CONFIG_MM_WAKE=2
+CONFIG_MM_BUSY=5
+CONFIG_MM_SPI_SCK=7
+CONFIG_MM_SPI_MOSI=9
+CONFIG_MM_SPI_MISO=8
+CONFIG_MM_SPI_CS=4
+CONFIG_MM_SPI_IRQ=3

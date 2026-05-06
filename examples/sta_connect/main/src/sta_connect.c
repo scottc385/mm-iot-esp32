@@ -30,6 +30,98 @@
 /** SSID of the AP to connect to. */
 #define SSID "Halow-pi"
 
+/*
+ * Narrow RF-debug connect attempts to a small explicit channel set.
+ *
+ * Change STA_TEST_CHANNEL_PRESET while sweeping the Pi AP through channel/BW
+ * combinations. Keeping this list narrow makes scan/connect behavior easier to
+ * interpret than a full regulatory-domain scan.
+ */
+#define STA_TEST_PRESET_1MHZ_LOW   1
+#define STA_TEST_PRESET_1MHZ_MID   2
+#define STA_TEST_PRESET_1MHZ_HIGH  3
+#define STA_TEST_PRESET_2MHZ_MID   4
+#define STA_TEST_PRESET_2MHZ_HIGH  5
+#define STA_TEST_PRESET_4MHZ_LOW   6
+#define STA_TEST_PRESET_4MHZ_MID   7
+#define STA_TEST_PRESET_4MHZ_HIGH  8
+
+/* Active default: channel 24, 914.0 MHz, 4 MHz. */
+#ifndef STA_TEST_CHANNEL_PRESET
+#define STA_TEST_CHANNEL_PRESET STA_TEST_PRESET_1MHZ_LOW
+#endif
+
+#if STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_1MHZ_LOW
+#define STA_TEST_CHANNEL_LABEL "channel=13 freq=908500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    { 908500000, 10000, false, 68, 1, 13, 1, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_1MHZ_MID
+#define STA_TEST_CHANNEL_LABEL "channel=25 freq=914500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_1MHZ_HIGH
+#define STA_TEST_CHANNEL_LABEL "channel=41 freq=922500000Hz bw=1MHz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_2MHZ_MID
+#define STA_TEST_CHANNEL_LABEL "channel=26 freq=915000000Hz bw=2MHz primary=channel25/914500000Hz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    /* Primary 1 MHz beacon/DTIM channel for discovery. */
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+    /* Wider operating channel. */
+    { 915000000, 10000, false, 69, 2, 26, 2, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_2MHZ_HIGH
+#define STA_TEST_CHANNEL_LABEL "channel=42 freq=923000000Hz bw=2MHz primary=channel41/922500000Hz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    /* Primary 1 MHz beacon/DTIM channel for discovery. */
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    /* Wider operating channel. */
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_4MHZ_LOW
+#define STA_TEST_CHANNEL_LABEL "channel=24 freq=914000000Hz bw=4MHz primary=channel26/915000000Hz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    /* Primary 1 MHz subchannel under the 2 MHz DTIM channel. */
+    { 914500000, 10000, false, 68, 1, 25, 1, 36, 0, 0, 0 },
+    /* 2 MHz DTIM/primary channel for discovery. */
+    { 915000000, 10000, false, 69, 2, 26, 2, 36, 0, 0, 0 },
+    /* Wider operating channel. */
+    { 914000000, 10000, false, 70, 3, 24, 4, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_4MHZ_MID
+#define STA_TEST_CHANNEL_LABEL "channel=32 freq=918000000Hz bw=4MHz primary=channel34/919000000Hz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    /* Primary 1 MHz subchannel under the 2 MHz DTIM channel. */
+    { 918500000, 10000, false, 68, 1, 33, 1, 36, 0, 0, 0 },
+    /* 2 MHz DTIM/primary channel for discovery. */
+    { 919000000, 10000, false, 69, 2, 34, 2, 36, 0, 0, 0 },
+    /* Wider operating channel. */
+    { 918000000, 10000, false, 70, 3, 32, 4, 36, 0, 0, 0 },
+};
+#elif STA_TEST_CHANNEL_PRESET == STA_TEST_PRESET_4MHZ_HIGH
+#define STA_TEST_CHANNEL_LABEL "channel=40 freq=922000000Hz bw=4MHz primary=channel42/923000000Hz"
+static const struct mmwlan_s1g_channel sta_test_channels[] = {
+    /* Primary 1 MHz subchannel under the 2 MHz DTIM channel. */
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    /* 2 MHz DTIM/primary channel for discovery. */
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+    /* Wider operating channel. */
+    { 922000000, 10000, false, 70, 3, 40, 4, 36, 0, 0, 0 },
+};
+#else
+#error Unsupported STA_TEST_CHANNEL_PRESET
+#endif
+
+static const struct mmwlan_s1g_channel_list sta_test_channel_list = {
+    .country_code = "US",
+    .num_channels = (sizeof(sta_test_channels) / sizeof(sta_test_channels[0])),
+    .channels = sta_test_channels,
+};
+
 static unsigned scan_result_count;
 
 static void dump_umac_stats(const char *tag)
@@ -280,20 +372,16 @@ void app_main(void)
     mmhal_init();
     mmwlan_init();
 
-    /* Load channel list. */
-    channel_list = mmwlan_lookup_regulatory_domain(get_regulatory_db(), COUNTRY_CODE);
-    if (channel_list == NULL)
-    {
-        printf("Could not find specified regulatory domain matching country code %s\n",
-               COUNTRY_CODE);
-        MMOSAL_ASSERT(false);
-    }
+    /* Load a single-channel list so RF-debug tests target the current Pi AP config. */
+    channel_list = &sta_test_channel_list;
     status = mmwlan_set_channel_list(channel_list);
     if (status != MMWLAN_SUCCESS)
     {
-        printf("Failed to set country code %s\n", channel_list->country_code);
+        printf("Failed to set STA test channel list: " STA_TEST_CHANNEL_LABEL "\n");
         MMOSAL_ASSERT(false);
     }
+    printf("STA test channel: country=%s " STA_TEST_CHANNEL_LABEL "\n",
+           channel_list->country_code);
 
     /* Register callback to be invoked when the link goes up and down. We pass link_up_semaphore
      * as an opaque argument so that this can be used to signal link up. */
