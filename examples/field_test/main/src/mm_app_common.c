@@ -19,6 +19,7 @@
 
 /** Binary semaphore used to start user_main() once the link comes up. */
 static struct mmosal_semb *link_established = NULL;
+static volatile bool link_is_up = false;
 
 /**
  * WLAN station status callback, invoked when WLAN STA state changes.
@@ -53,6 +54,7 @@ static void link_status_callback(const struct mmipal_link_status *link_status)
     uint32_t time_ms = mmosal_get_time_ms();
     if (link_status->link_state == MMIPAL_LINK_UP)
     {
+        link_is_up = true;
         printf("Link is up. Time: %lu ms, ", time_ms);
         printf("IP: %s, ", link_status->ip_addr);
         printf("Netmask: %s, ", link_status->netmask);
@@ -62,8 +64,14 @@ static void link_status_callback(const struct mmipal_link_status *link_status)
     }
     else
     {
+        link_is_up = false;
         printf("Link is down. Time: %lu ms\n", time_ms);
     }
+}
+
+bool app_link_is_up(void)
+{
+    return link_is_up;
 }
 
 void app_print_version_info(void)

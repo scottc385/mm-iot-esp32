@@ -36,6 +36,8 @@
  * @ref MMCONFIG_PROGRAMMING instructions.
  */
 
+#include <stdbool.h>
+
 /**
  * Initializes the WLAN interface using settings specified in the config store.
  *
@@ -51,6 +53,15 @@ void app_wlan_init(void);
  * If no settings are found, the defaults are used.
  */
 void app_wlan_start(void);
+
+/**
+ * Returns whether the IP link is currently up.
+ *
+ * This is updated from the MMIPAL link-status callback and is useful for UI
+ * status indicators. RSSI can remain stale after a disconnect, so it should not
+ * be the only link-down signal.
+ */
+bool app_link_is_up(void);
 
 /**
  * Disconnects from Wi-Fi and de-initializes the WLAN interface.

@@ -11,6 +11,9 @@
  * - Green flash: recent test completed with acceptable loss/errors.
  * - Amber flash: recent test completed with high loss/errors or no useful traffic.
  * - Red slow blink: out of range or RSSI below CONFIG_FIELD_OUT_OF_RANGE_RSSI_DBM.
+ *
+ * If GPIO48 addressable LED output causes instability on a specific board,
+ * build with sdkconfig.defaults.esp32s3.heltec_ht_hc01p_noled as a fallback.
  */
 
 #include <errno.h>
@@ -291,7 +294,7 @@ static void send_trigger_packet(void)
                        (unsigned long)g_test_seq, (unsigned long)mmosal_get_time_ms(),
                        (long)rssi, stats.rssi);
 
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0)
     {
         printf("button trigger: socket failed errno=%d\n", errno);
@@ -303,7 +306,16 @@ static void send_trigger_packet(void)
     dest.sin_port = htons(CONFIG_FIELD_TRIGGER_PORT);
     dest.sin_addr.s_addr = inet_addr(CONFIG_FIELD_TRIGGER_AP_IP);
 
-    int sent = sendto(sock, msg, len, 0, (struct sockaddr *)&dest, sizeof(dest));
+    int sent = -1;
+    if (connect(sock, (struct sockaddr *)&dest, sizeof(dest)) == 0)
+    {
+        sent = send(sock, msg, len, 0);
+    }
+    else
+    {
+        printf("button trigger: connect failed errno=%d target=%s:%d\n",
+               errno, CONFIG_FIELD_TRIGGER_AP_IP, CONFIG_FIELD_TRIGGER_PORT);
+    }
     close(sock);
 
     printf("button trigger: seq=%lu sent=%d target=%s:%d rssi=%ld umac_rssi=%d\n",
@@ -400,8 +412,13 @@ static void start_udp_server(void)
     }
 }
 
-static const char *derive_status(int32_t rssi, bool running, uint32_t now_ms)
+static const char *derive_status(int32_t rssi, bool link_up, bool running, uint32_t now_ms)
 {
+    if (!link_up)
+    {
+        return "LINK_DOWN";
+    }
+
     if (running)
     {
         return "TEST_RUNNING";
@@ -441,6 +458,10 @@ static void update_led(const char *status, uint32_t now_ms)
     {
         rgb_set(blink_slow ? 220 : 0, 0, 0); /* red slow blink */
     }
+    else if (strcmp(status, "LINK_DOWN") == 0)
+    {
+        rgb_set(blink_slow ? 220 : 0, 0, 0); /* red slow blink */
+    }
     else
     {
         rgb_set(0, 40, 0); /* dim green */
@@ -469,16 +490,17 @@ static void status_task(void *arg)
         }
 
         int32_t rssi = get_link_rssi();
+        bool link_up = app_link_is_up();
         struct mmwlan_stats_umac_data stats;
         get_umac_stats(&stats);
-        const char *status = derive_status(rssi, running, now);
+        const char *status = derive_status(rssi, link_up, running, now);
         update_led(status, now);
 
         if ((now - last_print_ms) >= CONFIG_FIELD_STATUS_INTERVAL_MS)
         {
             last_print_ms = now;
-            printf("FIELD status=%s uptime_ms=%lu rssi=%ld umac_rssi=%d rx_frames=%lu last_kbps=%lu last_rx=%lu last_errors=%lu seq=%lu\n",
-                   status, (unsigned long)now, (long)rssi, stats.rssi,
+            printf("FIELD status=%s link=%s uptime_ms=%lu rssi=%ld umac_rssi=%d rx_frames=%lu last_kbps=%lu last_rx=%lu last_errors=%lu seq=%lu\n",
+                   status, link_up ? "up" : "down", (unsigned long)now, (long)rssi, stats.rssi,
                    (unsigned long)g_last_rx_frames, (unsigned long)g_last_report_kbps,
                    (unsigned long)g_last_report_rx, (unsigned long)g_last_report_errors,
                    (unsigned long)g_test_seq);
@@ -491,7 +513,7 @@ static void status_task(void *arg)
 void app_main(void)
 {
     printf("\n\nMorse Field Test STA (Built " __DATE__ " " __TIME__ ")\n\n");
-    printf("button_gpio=%d trigger=%s:%d out_of_range_rssi=%d rgb_pwm=%s\n",
+    printf("button_gpio=%d trigger=%s:%d out_of_range_rssi=%d rgb=%s\n",
            CONFIG_FIELD_BUTTON_GPIO, CONFIG_FIELD_TRIGGER_AP_IP, CONFIG_FIELD_TRIGGER_PORT,
            CONFIG_FIELD_OUT_OF_RANGE_RSSI_DBM, FIELD_RGB_READY ? "enabled" : "disabled");
 
@@ -499,13 +521,13 @@ void app_main(void)
     rgb_set(0, 0, 80);
     button_init();
 
-    mmosal_task_create(button_task, NULL, MMOSAL_TASK_PRI_LOW, 512, "field_button");
+    mmosal_task_create(button_task, NULL, MMOSAL_TASK_PRI_LOW, 2048, "field_button");
 
     app_wlan_init();
     app_wlan_start();
 
     start_udp_server();
-    mmosal_task_create(status_task, NULL, MMOSAL_TASK_PRI_LOW, 1024, "field_status");
+    mmosal_task_create(status_task, NULL, MMOSAL_TASK_PRI_LOW, 2048, "field_status");
 
     while (true)
     {
