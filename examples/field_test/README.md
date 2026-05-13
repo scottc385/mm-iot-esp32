@@ -13,6 +13,15 @@ Default Heltec profile:
 - Button: GPIO0, active low
 - Addressable RGB LED: GPIO48
 
+Known hardware profiles:
+
+| Profile defaults file | Module | FW | BCF | Notes |
+| --- | --- | --- | --- | --- |
+| `sdkconfig.defaults.esp32s3.heltec_ht_hc01p` | Heltec HT-HC01P | `mm6108.mbin` | `bcf_mf08551.mbin` | Current best field-test profile. Morse support recommends using Heltec-supplied BCFs for Heltec modules. |
+| `sdkconfig.defaults.esp32s3.heltec_ht_hc01p_vendor` | Heltec HT-HC01P | `mm6108.mbin` | `bcf_HC0P.mbin` | Heltec `driver_1_15_3` vendor BCF converted from `bcf_HC0P.bin`; added for safe A/B testing against `bcf_mf08551.mbin`. |
+| `sdkconfig.defaults.esp32s3.seeed_mf16858_current` | Seeed/Quectel FGH100M-H | `mm6108.mbin` | `bcf_mf16858.mbin` | Best local Seeed ESP32 candidate so far. `MF16858` is the Morse reference design name used by Quectel-derived FGH100M-H files. |
+| `sdkconfig.defaults.esp32s3.seeed_fgh100mh` | Seeed/Quectel FGH100M-H | `mm6108.mbin` | `bcf_fgh100mhaamd.mbin` | Historical candidate. Keep for comparison, but do not mix BCF/firmware versions casually. |
+
 Build:
 
 ```bash

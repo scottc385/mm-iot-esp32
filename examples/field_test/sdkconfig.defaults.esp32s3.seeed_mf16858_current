@@ -1,8 +1,9 @@
 #
 # ESP32-S3 + Seeed XIAO HaLow Hat / WIO-WM6180 test profile.
 #
-# This uses the Seeed-provided FGH100M-H US BCF referenced by Morse support:
-# bcf_mf16858.mbin.
+# This uses the MF16858/FGH100M-H BCF from MM-IoT-SDK 2.10.4. Morse support
+# confirmed that MF16858 is the Morse reference design name used for Quectel
+# FGH100M-H-derived modules, but firmware and BCF versions must stay matched.
 #
 CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 CONFIG_MM_BCF_FILE="bcf_mf16858.mbin"
