@@ -1,0 +1,69 @@
+menu "HaLow field test"
+
+    config FIELD_BUTTON_GPIO
+        int "Field-test button GPIO"
+        default 0
+        help
+            GPIO used for manual field-test trigger. ESP32 boot button is usually GPIO0.
+
+    config FIELD_BUTTON_ACTIVE_LOW
+        bool "Button is active low"
+        default y
+
+    config FIELD_RGB_PWM_ENABLE
+        bool "Enable PWM RGB status LED"
+        default n
+        help
+            Enable this only if the board RGB LED exposes separate red/green/blue GPIOs.
+            Some ESP32-S3 boards use a single addressable RGB LED instead; that needs a
+            different driver and should leave this disabled.
+
+    config FIELD_RGB_ADDR_ENABLE
+        bool "Enable addressable RGB status LED"
+        default y
+        help
+            Enable this for boards with a single WS2812/SK6812-style addressable RGB LED.
+            The Hosyond ESP32-S3 N16R8 board appears to use GPIO48.
+
+    config FIELD_RGB_ADDR_GPIO
+        int "Addressable RGB LED GPIO"
+        default 48
+        depends on FIELD_RGB_ADDR_ENABLE
+
+    config FIELD_RGB_RED_GPIO
+        int "PWM RGB red GPIO"
+        default -1
+        depends on FIELD_RGB_PWM_ENABLE
+
+    config FIELD_RGB_GREEN_GPIO
+        int "PWM RGB green GPIO"
+        default -1
+        depends on FIELD_RGB_PWM_ENABLE
+
+    config FIELD_RGB_BLUE_GPIO
+        int "PWM RGB blue GPIO"
+        default -1
+        depends on FIELD_RGB_PWM_ENABLE
+
+    config FIELD_RGB_ACTIVE_LOW
+        bool "PWM RGB channels are active low"
+        default n
+        depends on FIELD_RGB_PWM_ENABLE
+
+    config FIELD_TRIGGER_AP_IP
+        string "AP control IP for button trigger packets"
+        default "192.168.50.1"
+
+    config FIELD_TRIGGER_PORT
+        int "AP control UDP port for button trigger packets"
+        default 5010
+
+    config FIELD_OUT_OF_RANGE_RSSI_DBM
+        int "RSSI threshold considered marginal/out-of-range"
+        default -88
+
+    config FIELD_STATUS_INTERVAL_MS
+        int "Serial status interval in milliseconds"
+        default 5000
+
+endmenu
