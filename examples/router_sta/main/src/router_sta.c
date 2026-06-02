@@ -59,6 +59,7 @@ static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
 static uint32_t router_probe_seq;
 static uint32_t last_status_ms;
+static uint32_t route_snapshot_seq;
 
 static int32_t get_link_rssi(void)
 {
@@ -121,6 +122,55 @@ static void router_sta_print_router_log(void)
     }
 }
 
+static void router_sta_print_event(void *arg, const tb_router_event *event)
+{
+    (void)arg;
+    if (!event) {
+        return;
+    }
+
+    const char *type = "unknown";
+    switch (event->type) {
+    case TB_ROUTER_EVENT_DNET_CHANGE:
+        type = "dnet_change";
+        break;
+    case TB_ROUTER_EVENT_IAR_RX:
+        type = "iar_rx";
+        break;
+    default:
+        break;
+    }
+
+    printf("ROUTER_EVENT type=%s port=%u net=%u\n",
+           type,
+           (unsigned)event->port_id,
+           (unsigned)event->net);
+}
+
+static void router_sta_print_route(void *arg, const tb_router_route_snapshot *route)
+{
+    (void)arg;
+    if (!route) {
+        return;
+    }
+
+    printf("ROUTER_ROUTE port=%u port_net=%u dnet=%u age_ms=%lu static=%u next_hop=%u peer=%u\n",
+           (unsigned)route->port_id,
+           (unsigned)route->port_net,
+           (unsigned)route->dnet,
+           (unsigned long)route->age_ms,
+           route->configured_static ? 1U : 0U,
+           route->have_next_hop ? 1U : 0U,
+           route->have_peer ? 1U : 0U);
+}
+
+static void router_sta_print_route_snapshot(uint32_t now_ms)
+{
+    route_snapshot_seq++;
+    printf("ROUTER_ROUTE_SNAPSHOT seq=%lu\n", (unsigned long)route_snapshot_seq);
+    tb_router_service_for_each_route(&router_service, now_ms, router_sta_print_route, NULL);
+}
+
 void app_main(void)
 {
     printf("\n\nESP32 HaLow Router STA (Built " __DATE__ " " __TIME__ ")\n\n");
@@ -146,6 +196,7 @@ void app_main(void)
         uint32_t now = mmosal_get_time_ms();
         udp_tbx_port_poll(&udp_tbx, &router_service, CONFIG_ROUTER_STA_UDP_TBX_PORT_ID, now);
         tb_router_service_tick(&router_service, now);
+        tb_router_service_drain_events(&router_service, router_sta_print_event, NULL);
         router_sta_print_router_log();
 
         if (now - last_status_ms >= CONFIG_ROUTER_STA_STATUS_INTERVAL_MS) {
@@ -155,6 +206,7 @@ void app_main(void)
                    (long)get_link_rssi(),
                    (unsigned long)router_probe_seq);
             udp_tbx_port_print_status(&udp_tbx);
+            router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();
         }
 
