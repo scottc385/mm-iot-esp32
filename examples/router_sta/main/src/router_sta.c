@@ -1,28 +1,23 @@
 /*
  * ESP32 HaLow router station scaffold.
  *
- * This is the second MVP milestone: prove the Heltec HT-HC01P can connect as a
- * HaLow STA and exchange UDP/TBX-framed traffic with the Pi AP/router endpoint.
- * The BACnet router core is intentionally not copied yet; see
- * SYNC_FROM_WBACNET.md for the next milestone.
+ * Current milestone: Heltec HT-HC01P joins the Pi HaLow AP, opens a UDP/TBX
+ * transport, configures the copied portable router service, and periodically
+ * sends a real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX.
+ * Inbound TBX frames are unwrapped and submitted to the router service.
  */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
-#include "lwip/inet.h"
-#include "lwip/sockets.h"
 #include "sdkconfig.h"
 
 #include "mm_app_common.h"
 #include "mmosal.h"
 #include "mmwlan.h"
-#include "mmwlan_stats.h"
-#include "tbx.h"
+#include "router_service.h"
+#include "router_transport.h"
+#include "udp_tbx_port.h"
 
 #ifndef CONFIG_ROUTER_STA_UDP_LOCAL_PORT
 #define CONFIG_ROUTER_STA_UDP_LOCAL_PORT 5000
@@ -40,184 +35,129 @@
 #define CONFIG_ROUTER_STA_STATUS_INTERVAL_MS 5000
 #endif
 
-static int udp_sock = -1;
-static uint32_t heartbeat_seq = 0;
-static tbx_origin_t local_origin = {0};
+#ifndef CONFIG_ROUTER_STA_TBX_ORIGIN_ID
+#define CONFIG_ROUTER_STA_TBX_ORIGIN_ID "ESP1"
+#endif
+
+#ifndef CONFIG_ROUTER_STA_UDP_TBX_NET
+#define CONFIG_ROUTER_STA_UDP_TBX_NET 65000
+#endif
+
+#ifndef CONFIG_ROUTER_STA_UDP_TBX_PORT_ID
+#define CONFIG_ROUTER_STA_UDP_TBX_PORT_ID 1
+#endif
+
+#ifndef CONFIG_ROUTER_STA_DNET_TTL_MS
+#define CONFIG_ROUTER_STA_DNET_TTL_MS 60000
+#endif
+
+#ifndef CONFIG_ROUTER_STA_LOG_LEVEL
+#define CONFIG_ROUTER_STA_LOG_LEVEL 1
+#endif
+
+static tb_router_service router_service;
+static udp_tbx_port udp_tbx;
+static uint32_t router_probe_seq;
+static uint32_t last_status_ms;
 
 static int32_t get_link_rssi(void)
 {
     return mmwlan_get_rssi();
 }
 
-static void init_tbx_origin(void)
+static bool router_sta_configure_service(void)
 {
-    local_origin.have_origin_id = true;
-
-    const char *origin_id = CONFIG_ROUTER_STA_TBX_ORIGIN_ID;
-    size_t origin_id_len = strlen(origin_id);
-    if (origin_id_len > TBX_ORIGIN_ID_LEN)
-    {
-        origin_id_len = TBX_ORIGIN_ID_LEN;
-    }
-    memcpy(local_origin.origin_id, origin_id, origin_id_len);
-}
-
-static bool is_local_origin(const tbx_origin_t *origin)
-{
-    return origin && origin->have_origin_id &&
-           memcmp(origin->origin_id, local_origin.origin_id, TBX_ORIGIN_ID_LEN) == 0;
-}
-
-static void print_origin_id(const tbx_origin_t *origin)
-{
-    if (!origin || !origin->have_origin_id)
-    {
-        printf("none");
-        return;
-    }
-
-    for (size_t i = 0; i < TBX_ORIGIN_ID_LEN; i++)
-    {
-        uint8_t c = origin->origin_id[i];
-        putchar((c >= 32 && c <= 126) ? (int)c : '.');
-    }
-}
-
-static void udp_smoke_init(void)
-{
-    udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (udp_sock < 0)
-    {
-        printf("UDP/TBX smoke: socket failed errno=%d\n", errno);
-        return;
-    }
-
-    struct sockaddr_in local = {0};
-    local.sin_family = AF_INET;
-    local.sin_port = htons(CONFIG_ROUTER_STA_UDP_LOCAL_PORT);
-    local.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(udp_sock, (struct sockaddr *)&local, sizeof(local)) != 0)
-    {
-        printf("UDP/TBX smoke: bind port=%d failed errno=%d\n",
-               CONFIG_ROUTER_STA_UDP_LOCAL_PORT, errno);
-        close(udp_sock);
-        udp_sock = -1;
-        return;
-    }
-
-    int flags = fcntl(udp_sock, F_GETFL, 0);
-    if (flags >= 0)
-    {
-        (void)fcntl(udp_sock, F_SETFL, flags | O_NONBLOCK);
-    }
-    printf("UDP/TBX smoke: local_port=%d peer=%s:%d origin_id=%s\n",
-           CONFIG_ROUTER_STA_UDP_LOCAL_PORT,
-           CONFIG_ROUTER_STA_UDP_PEER_IP,
-           CONFIG_ROUTER_STA_UDP_PEER_PORT,
-           CONFIG_ROUTER_STA_TBX_ORIGIN_ID);
-}
-
-static void udp_smoke_tick(void)
-{
-    if (udp_sock < 0)
-    {
-        return;
-    }
-
-    struct sockaddr_in peer = {0};
-    peer.sin_family = AF_INET;
-    peer.sin_port = htons(CONFIG_ROUTER_STA_UDP_PEER_PORT);
-    peer.sin_addr.s_addr = inet_addr(CONFIG_ROUTER_STA_UDP_PEER_IP);
-
-    char npdu[128];
-    int npdu_len = snprintf(npdu, sizeof(npdu), "TBX_SMOKE seq=%lu rssi=%ld link=%s",
-                            (unsigned long)heartbeat_seq++,
-                            (long)get_link_rssi(),
-                            app_link_is_up() ? "up" : "down");
-    uint8_t frame[192];
-    size_t frame_len = tbx_wrap_bacnet_npdu(frame, sizeof(frame),
-                                            (const uint8_t *)npdu,
-                                            (size_t)npdu_len,
-                                            &local_origin);
-    if (frame_len == 0)
-    {
-        printf("TX_TBX_SMOKE wrap failed npdu_len=%d\n", npdu_len);
-        return;
-    }
-
-    int sent = sendto(udp_sock, frame, frame_len, 0, (struct sockaddr *)&peer, sizeof(peer));
-    if (sent < 0)
-    {
-        printf("TX_TBX_SMOKE send failed errno=%d\n", errno);
-    }
-    else
-    {
-        printf("TX_TBX_SMOKE bytes=%d npdu_len=%d seq=%lu\n",
-               sent, npdu_len, (unsigned long)(heartbeat_seq - 1));
-    }
-
-    while (true)
-    {
-        uint8_t rx[256];
-        struct sockaddr_in from = {0};
-        socklen_t from_len = sizeof(from);
-        int got = recvfrom(udp_sock, rx, sizeof(rx), 0,
-                           (struct sockaddr *)&from, &from_len);
-        if (got <= 0)
+    tb_router_port_config ports[] = {
         {
-            break;
-        }
+            .port_id = CONFIG_ROUTER_STA_UDP_TBX_PORT_ID,
+            .net = CONFIG_ROUTER_STA_UDP_TBX_NET,
+            .kind = TB_ROUTER_TRANSPORT_TBX_UDP,
+            .caps = TB_ROUTER_PORT_CAP_UNICAST |
+                    TB_ROUTER_PORT_CAP_BROADCAST |
+                    TB_ROUTER_PORT_CAP_STATIC_PEERS |
+                    TB_ROUTER_PORT_CAP_ROUTE_META,
+            .transport_state = &udp_tbx,
+            .ops = &k_udp_tbx_router_ops,
+            .static_dnets = NULL,
+            .static_dnet_count = 0,
+        },
+    };
 
-        tbx_origin_t origin = {0};
-        const uint8_t *npdu_rx = NULL;
-        size_t npdu_rx_len = 0;
-        if (tbx_unwrap_bacnet_npdu(rx, (size_t)got, &origin, &npdu_rx, &npdu_rx_len))
-        {
-            if (is_local_origin(&origin))
-            {
-                printf("RX_TBX_SMOKE dropped self-origin frame from %s:%u bytes=%d\n",
-                       inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
-                continue;
-            }
+    bool ok = tb_router_service_configure(&router_service,
+                                          NULL,
+                                          ports,
+                                          sizeof(ports) / sizeof(ports[0]),
+                                          CONFIG_ROUTER_STA_DNET_TTL_MS,
+                                          CONFIG_ROUTER_STA_LOG_LEVEL);
+    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u\n",
+           ok ? "ok" : "failed",
+           (unsigned)(sizeof(ports) / sizeof(ports[0])),
+           (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET);
+    return ok;
+}
 
-            printf("RX_TBX_SMOKE from %s:%u bytes=%d origin=",
-                   inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
-            print_origin_id(&origin);
-            printf(" npdu_len=%u payload=", (unsigned)npdu_rx_len);
-            fwrite(npdu_rx, 1, npdu_rx_len, stdout);
-            putchar('\n');
-        }
-        else
-        {
-            printf("RX_UDP_RAW from %s:%u bytes=%d payload=", inet_ntoa(from.sin_addr),
-                   ntohs(from.sin_port), got);
-            fwrite(rx, 1, (size_t)got, stdout);
-            putchar('\n');
-        }
+static void router_sta_send_whois_router(void)
+{
+    uint8_t npdu[64];
+    size_t len = tb_router_npdu_build_whois_router(npdu, sizeof(npdu));
+    if (len == 0) {
+        printf("TX_ROUTER_WIR build failed\n");
+        return;
+    }
+
+    router_probe_seq++;
+    printf("TX_ROUTER_WIR seq=%lu npdu_len=%u\n",
+           (unsigned long)router_probe_seq, (unsigned)len);
+    udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
+}
+
+static void router_sta_print_router_log(void)
+{
+    size_t log_len = 0;
+    const char *log = tb_router_service_get_log(&router_service, &log_len);
+    if (log && log_len > 0) {
+        printf("ROUTER_LOG %.*s\n", (int)log_len, log);
+        tb_router_service_clear_log(&router_service);
     }
 }
 
 void app_main(void)
 {
-    printf("\n\nESP32 HaLow Router STA Scaffold (Built " __DATE__ " " __TIME__ ")\n\n");
-    printf("MVP milestone: HaLow STA + UDP/TBX smoke. peer=%s:%d local_port=%d\n",
+    printf("\n\nESP32 HaLow Router STA (Built " __DATE__ " " __TIME__ ")\n\n");
+    printf("MVP milestone: HaLow STA + UDP/TBX router-service scaffold. peer=%s:%d local_port=%d\n",
            CONFIG_ROUTER_STA_UDP_PEER_IP,
            CONFIG_ROUTER_STA_UDP_PEER_PORT,
            CONFIG_ROUTER_STA_UDP_LOCAL_PORT);
 
-    init_tbx_origin();
     app_wlan_init();
     app_wlan_start();
-    udp_smoke_init();
 
-    while (true)
-    {
-        printf("ROUTER_STA status link=%s rssi=%ld seq=%lu\n",
-               app_link_is_up() ? "up" : "down",
-               (long)get_link_rssi(),
-               (unsigned long)heartbeat_seq);
-        udp_smoke_tick();
-        mmosal_task_sleep(CONFIG_ROUTER_STA_STATUS_INTERVAL_MS);
+    if (!udp_tbx_port_open(&udp_tbx,
+                           CONFIG_ROUTER_STA_UDP_LOCAL_PORT,
+                           CONFIG_ROUTER_STA_UDP_PEER_IP,
+                           CONFIG_ROUTER_STA_UDP_PEER_PORT,
+                           CONFIG_ROUTER_STA_TBX_ORIGIN_ID)) {
+        printf("UDP_TBX unavailable; router scaffold will not run\n");
+    }
+
+    (void)router_sta_configure_service();
+
+    while (true) {
+        uint32_t now = mmosal_get_time_ms();
+        udp_tbx_port_poll(&udp_tbx, &router_service, CONFIG_ROUTER_STA_UDP_TBX_PORT_ID, now);
+        tb_router_service_tick(&router_service, now);
+        router_sta_print_router_log();
+
+        if (now - last_status_ms >= CONFIG_ROUTER_STA_STATUS_INTERVAL_MS) {
+            last_status_ms = now;
+            printf("ROUTER_STA status link=%s rssi=%ld wir_seq=%lu\n",
+                   app_link_is_up() ? "up" : "down",
+                   (long)get_link_rssi(),
+                   (unsigned long)router_probe_seq);
+            udp_tbx_port_print_status(&udp_tbx);
+            router_sta_send_whois_router();
+        }
+
+        mmosal_task_sleep(50);
     }
 }

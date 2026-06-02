@@ -7,7 +7,10 @@ Current milestone implemented here:
 
 - Heltec HT-HC01P HaLow STA bring-up
 - static IP on the HaLow interface
-- UDP/TBX smoke traffic to the Pi AP/router endpoint
+- UDP/TBX socket on the HaLow link
+- copied portable `wbacnet-fw` router service configured with one UDP/TBX port
+- periodic real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX
+- inbound TBX frames unwrapped and submitted to the router service
 
 Planned MVP transports:
 
@@ -40,6 +43,12 @@ idf.py -B build-heltec-router \
   build
 ```
 
+The verified Heltec build output is:
+
+```text
+build-heltec-router/router_sta.bin
+```
+
 ## Pi Test Listener
 
 On the Pi AP:
@@ -48,18 +57,23 @@ On the Pi AP:
 nc -u -l -p 5000 | hexdump -C
 ```
 
-The ESP32 sends periodic TBX-wrapped `TBX_SMOKE` payloads to
-`192.168.50.1:5000` and listens on local UDP port `5000`.
+The ESP32 sends periodic TBX-wrapped BACnet NPDU frames to
+`192.168.50.1:5000` and listens on local UDP port `5000`. The payload is now a
+BACnet network-layer Who-Is-Router-To-Network NPDU, not a text smoke payload.
 
-Plain text UDP replies still work for manual socket testing:
+Expected ESP32 log examples:
 
-```sh
-printf 'AP_REPLY test\n' | nc -u -w 1 192.168.50.2 5000
+```text
+ROUTER_CONFIG ok ports=1 tbx_net=65000
+ROUTER_STA status link=up rssi=-20 wir_seq=3
+TX_ROUTER_WIR seq=4 npdu_len=2
+TX_TBX npdu_len=2 tbx_len=11 tx_frames=4
+RX_TBX from=192.168.50.1:5000 bytes=... origin=AP01 npdu_len=...
+RX_TBX_ROUTER rc=... accepted=...
 ```
 
-Those replies will print as `RX_UDP_RAW`. TBX-wrapped replies print as
-`RX_TBX_SMOKE`. This is only a framing smoke test; the payload is not a real
-BACnet NPDU yet.
+For manual receive-path testing, send a TBX-wrapped BACnet NPDU from the Pi.
+A plain text UDP packet is intentionally rejected as `RX_TBX_BAD`.
 
 ## Source Sharing
 
