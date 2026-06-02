@@ -11,6 +11,7 @@ Current milestone implemented here:
 - copied portable `wbacnet-fw` router service configured with one UDP/TBX port
 - periodic real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX
 - inbound TBX frames unwrapped and submitted to the router service
+- route learning from AP-side I-Am-Router-To-Network replies
 
 Planned MVP transports:
 
@@ -66,8 +67,8 @@ Expected ESP32 log examples:
 ```text
 ROUTER_CONFIG ok ports=1 tbx_net=65000
 ROUTER_STA status link=up rssi=-20 wir_seq=3
-TX_ROUTER_WIR seq=4 npdu_len=2
-TX_TBX npdu_len=2 tbx_len=11 tx_frames=4
+TX_ROUTER_WIR seq=4 npdu_len=7
+TX_TBX npdu_len=7 tbx_len=16 tx_frames=4
 RX_TBX from=192.168.50.1:5000 bytes=... origin=AP01 npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
 ROUTER_EVENT type=dnet_change port=1 net=1001
@@ -77,6 +78,14 @@ ROUTER_ROUTE port=1 port_net=65000 dnet=1001 age_ms=... static=0 next_hop=0 peer
 
 For manual receive-path testing, send a TBX-wrapped BACnet NPDU from the Pi.
 A plain text UDP packet is intentionally rejected as `RX_TBX_BAD`.
+
+Verified AP responder milestone:
+
+```text
+ESP -> AP: TBX WIR, npdu=01 a0 ff ff 00 ff 00
+AP -> ESP: TBX I-Am-Router, npdu=01 a0 ff ff 00 ff 01 03 e9
+ESP learned route: port=1 port_net=65000 dnet=1001
+```
 
 ## Source Sharing
 
