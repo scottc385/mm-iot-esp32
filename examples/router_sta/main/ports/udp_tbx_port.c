@@ -84,9 +84,88 @@ static bool is_local_origin(const udp_tbx_port *port, const tbx_origin_t *origin
            memcmp(origin->origin_id, port->origin_id, TBX_ORIGIN_ID_LEN) == 0;
 }
 
+static bool sockaddr_equal(const struct sockaddr_in *a, const struct sockaddr_in *b)
+{
+    return a && b &&
+           a->sin_family == b->sin_family &&
+           a->sin_port == b->sin_port &&
+           a->sin_addr.s_addr == b->sin_addr.s_addr;
+}
+
+static void udp_tbx_port_learn_route(udp_tbx_port *port,
+                                     uint16_t dnet,
+                                     const struct sockaddr_in *peer,
+                                     uint32_t now_ms)
+{
+    if (!port || !peer || dnet == 0 || dnet == 0xffff) {
+        return;
+    }
+
+    udp_tbx_route *empty = NULL;
+    udp_tbx_route *oldest = NULL;
+    for (size_t i = 0; i < UDP_TBX_PORT_MAX_ROUTES; i++) {
+        udp_tbx_route *route = &port->routes[i];
+        if (route->valid && route->dnet == dnet) {
+            bool changed = !sockaddr_equal(&route->peer, peer);
+            route->peer = *peer;
+            route->last_seen_ms = now_ms;
+            if (changed) {
+                printf("UDP_TBX_ROUTE_UPDATE dnet=%u peer=%s:%u\n",
+                       (unsigned)dnet,
+                       inet_ntoa(peer->sin_addr),
+                       (unsigned)ntohs(peer->sin_port));
+            }
+            return;
+        }
+        if (!route->valid && !empty) {
+            empty = route;
+        }
+        if (!oldest || route->last_seen_ms < oldest->last_seen_ms) {
+            oldest = route;
+        }
+    }
+
+    udp_tbx_route *slot = empty ? empty : oldest;
+    if (!slot) {
+        return;
+    }
+    slot->valid = true;
+    slot->dnet = dnet;
+    slot->peer = *peer;
+    slot->last_seen_ms = now_ms;
+    port->routes_learned++;
+    printf("UDP_TBX_ROUTE_LEARN dnet=%u peer=%s:%u total=%lu\n",
+           (unsigned)dnet,
+           inet_ntoa(peer->sin_addr),
+           (unsigned)ntohs(peer->sin_port),
+           (unsigned long)port->routes_learned);
+}
+
+static const udp_tbx_route *udp_tbx_port_lookup_route(const udp_tbx_port *port, uint16_t dnet)
+{
+    if (!port || dnet == 0 || dnet == 0xffff) {
+        return NULL;
+    }
+    for (size_t i = 0; i < UDP_TBX_PORT_MAX_ROUTES; i++) {
+        const udp_tbx_route *route = &port->routes[i];
+        if (route->valid && route->dnet == dnet) {
+            return route;
+        }
+    }
+    return NULL;
+}
+
 void udp_tbx_port_send_npdu_direct(udp_tbx_port *port,
                                    const uint8_t *npdu,
                                    size_t npdu_len)
+{
+    udp_tbx_port_send_npdu(port, npdu, npdu_len, NULL);
+}
+
+void udp_tbx_port_send_npdu(udp_tbx_port *port,
+                            const uint8_t *npdu,
+                            size_t npdu_len,
+                            const BACNET_ADDRESS *daddr)
 {
     if (!port || port->sock < 0 || !npdu || npdu_len == 0) {
         return;
@@ -104,8 +183,17 @@ void udp_tbx_port_send_npdu_direct(udp_tbx_port *port,
         return;
     }
 
+    const struct sockaddr_in *target = &port->peer;
+    const udp_tbx_route *route = daddr ? udp_tbx_port_lookup_route(port, daddr->net) : NULL;
+    if (route) {
+        target = &route->peer;
+        port->route_hits++;
+    } else if (daddr && daddr->net != 0 && daddr->net != 0xffff) {
+        port->route_misses++;
+    }
+
     int sent = sendto(port->sock, frame, frame_len, 0,
-                      (const struct sockaddr *)&port->peer, sizeof(port->peer));
+                      (const struct sockaddr *)target, sizeof(*target));
     if (sent != (int)frame_len) {
         printf("TX_TBX_ERR errno=%d npdu_len=%u tbx_len=%u\n",
                errno, (unsigned)npdu_len, (unsigned)frame_len);
@@ -114,8 +202,14 @@ void udp_tbx_port_send_npdu_direct(udp_tbx_port *port,
     }
 
     port->tx_frames++;
-    printf("TX_TBX npdu_len=%u tbx_len=%u tx_frames=%lu\n",
-           (unsigned)npdu_len, (unsigned)frame_len, (unsigned long)port->tx_frames);
+    printf("TX_TBX npdu_len=%u tbx_len=%u target=%s:%u dnet=%u route=%s tx_frames=%lu\n",
+           (unsigned)npdu_len,
+           (unsigned)frame_len,
+           inet_ntoa(target->sin_addr),
+           (unsigned)ntohs(target->sin_port),
+           daddr ? (unsigned)daddr->net : 0U,
+           route ? "hit" : "static",
+           (unsigned long)port->tx_frames);
 }
 
 static void udp_tbx_router_send_npdu(void *user_ctx,
@@ -125,9 +219,8 @@ static void udp_tbx_router_send_npdu(void *user_ctx,
                                      const BACNET_ADDRESS *daddr)
 {
     (void)user_ctx;
-    (void)daddr;
     udp_tbx_port *port = (udp_tbx_port *)tb_router_port_transport_state(router_port);
-    udp_tbx_port_send_npdu_direct(port, npdu, npdu_len);
+    udp_tbx_port_send_npdu(port, npdu, npdu_len, daddr);
 }
 
 const tb_router_transport_ops k_udp_tbx_router_ops = {
@@ -183,6 +276,7 @@ void udp_tbx_port_poll(udp_tbx_port *port,
             printf("RX_TBX_ROUTE_HINTS count=%u", (unsigned)hints.count);
             for (size_t i = 0; i < hints.count; i++) {
                 printf(" dnet=%u", (unsigned)hints.nets[i]);
+                udp_tbx_port_learn_route(port, hints.nets[i], &from, now_ms);
             }
             putchar('\n');
         }
@@ -208,11 +302,14 @@ void udp_tbx_port_print_status(const udp_tbx_port *port)
     if (!port) {
         return;
     }
-    printf("UDP_TBX_STATUS tx=%lu rx=%lu bad=%lu loop=%lu router_rx=%lu tx_errors=%lu\n",
+    printf("UDP_TBX_STATUS tx=%lu rx=%lu bad=%lu loop=%lu router_rx=%lu routes=%lu route_hits=%lu route_misses=%lu tx_errors=%lu\n",
            (unsigned long)port->tx_frames,
            (unsigned long)port->rx_frames,
            (unsigned long)port->rx_bad,
            (unsigned long)port->rx_loop,
            (unsigned long)port->rx_router_accepted,
+           (unsigned long)port->routes_learned,
+           (unsigned long)port->route_hits,
+           (unsigned long)port->route_misses,
            (unsigned long)port->tx_errors);
 }

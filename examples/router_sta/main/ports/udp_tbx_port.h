@@ -10,16 +10,28 @@
 #include "tbx.h"
 
 #define UDP_TBX_PORT_MAX_FRAME 1600
+#define UDP_TBX_PORT_MAX_ROUTES 8
+
+typedef struct udp_tbx_route {
+    bool valid;
+    uint16_t dnet;
+    struct sockaddr_in peer;
+    uint32_t last_seen_ms;
+} udp_tbx_route;
 
 typedef struct udp_tbx_port {
     int sock;
     struct sockaddr_in peer;
     uint8_t origin_id[TBX_ORIGIN_ID_LEN];
+    udp_tbx_route routes[UDP_TBX_PORT_MAX_ROUTES];
     uint32_t tx_frames;
     uint32_t rx_frames;
     uint32_t rx_bad;
     uint32_t rx_loop;
     uint32_t rx_router_accepted;
+    uint32_t routes_learned;
+    uint32_t route_hits;
+    uint32_t route_misses;
     uint32_t tx_errors;
 } udp_tbx_port;
 
@@ -37,4 +49,8 @@ void udp_tbx_port_poll(udp_tbx_port *port,
 void udp_tbx_port_send_npdu_direct(udp_tbx_port *port,
                                    const uint8_t *npdu,
                                    size_t npdu_len);
+void udp_tbx_port_send_npdu(udp_tbx_port *port,
+                            const uint8_t *npdu,
+                            size_t npdu_len,
+                            const BACNET_ADDRESS *daddr);
 void udp_tbx_port_print_status(const udp_tbx_port *port);

@@ -71,6 +71,7 @@ TX_ROUTER_WIR seq=4 npdu_len=7
 TX_TBX npdu_len=7 tbx_len=16 tx_frames=4
 RX_TBX from=192.168.50.1:5000 bytes=... origin=AP01 npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
+UDP_TBX_ROUTE_LEARN dnet=1001 peer=192.168.50.1:5000 total=1
 ROUTER_EVENT type=dnet_change port=1 net=1001
 ROUTER_EVENT type=iar_rx port=1 net=0
 ROUTER_ROUTE port=1 port_net=65000 dnet=1001 age_ms=... static=0 next_hop=0 peer=0
@@ -85,6 +86,7 @@ Verified AP responder milestone:
 ESP -> AP: TBX WIR, npdu=01 a0 ff ff 00 ff 00
 AP -> ESP: TBX I-Am-Router, npdu=01 a0 ff ff 00 ff 01 03 e9
 ESP learned route: port=1 port_net=65000 dnet=1001
+ESP UDP/TBX adapter learned peer: dnet=1001 -> 192.168.50.1:5000
 ```
 
 ## Source Sharing
