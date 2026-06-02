@@ -1,0 +1,26 @@
+menu "HaLow router STA"
+
+    config ROUTER_STA_UDP_LOCAL_PORT
+        int "UDP smoke local port"
+        default 5000
+
+    config ROUTER_STA_UDP_PEER_IP
+        string "UDP smoke peer IP"
+        default "192.168.50.1"
+
+    config ROUTER_STA_UDP_PEER_PORT
+        int "UDP smoke peer port"
+        default 5000
+
+    config ROUTER_STA_STATUS_INTERVAL_MS
+        int "Status/heartbeat interval in milliseconds"
+        default 5000
+
+    config ROUTER_STA_TBX_ORIGIN_ID
+        string "Router STA TBX origin ID"
+        default "ESP1"
+        help
+            Four-byte origin ID included in TBX smoke frames. Longer strings
+            are truncated; shorter strings are zero padded.
+
+endmenu
