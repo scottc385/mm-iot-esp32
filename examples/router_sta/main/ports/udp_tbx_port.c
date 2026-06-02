@@ -155,6 +155,11 @@ static const udp_tbx_route *udp_tbx_port_lookup_route(const udp_tbx_port *port, 
     return NULL;
 }
 
+bool udp_tbx_port_has_route(const udp_tbx_port *port, uint16_t dnet)
+{
+    return udp_tbx_port_lookup_route(port, dnet) != NULL;
+}
+
 void udp_tbx_port_send_npdu_direct(udp_tbx_port *port,
                                    const uint8_t *npdu,
                                    size_t npdu_len)

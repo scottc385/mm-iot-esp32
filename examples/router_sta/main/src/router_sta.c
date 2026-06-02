@@ -55,9 +55,14 @@
 #define CONFIG_ROUTER_STA_LOG_LEVEL 1
 #endif
 
+#ifndef CONFIG_ROUTER_STA_DEBUG_ROUTE_PROBE_DNET
+#define CONFIG_ROUTER_STA_DEBUG_ROUTE_PROBE_DNET 0
+#endif
+
 static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
 static uint32_t router_probe_seq;
+static uint32_t debug_route_probe_seq;
 static uint32_t last_status_ms;
 static uint32_t route_snapshot_seq;
 
@@ -110,6 +115,32 @@ static void router_sta_send_whois_router(void)
     printf("TX_ROUTER_WIR seq=%lu npdu_len=%u\n",
            (unsigned long)router_probe_seq, (unsigned)len);
     udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
+}
+
+static void router_sta_send_debug_route_probe(void)
+{
+#if CONFIG_ROUTER_STA_DEBUG_ROUTE_PROBE_DNET > 0
+    const uint16_t dnet = CONFIG_ROUTER_STA_DEBUG_ROUTE_PROBE_DNET;
+    if (!udp_tbx_port_has_route(&udp_tbx, dnet)) {
+        return;
+    }
+
+    uint8_t npdu[64];
+    size_t len = tb_router_npdu_build_whois_router(npdu, sizeof(npdu));
+    if (len == 0) {
+        printf("TX_DEBUG_ROUTE_PROBE build failed dnet=%u\n", (unsigned)dnet);
+        return;
+    }
+
+    BACNET_ADDRESS daddr = {0};
+    daddr.net = dnet;
+    daddr.len = 0;
+
+    debug_route_probe_seq++;
+    printf("TX_DEBUG_ROUTE_PROBE seq=%lu dnet=%u npdu_len=%u\n",
+           (unsigned long)debug_route_probe_seq, (unsigned)dnet, (unsigned)len);
+    udp_tbx_port_send_npdu(&udp_tbx, npdu, len, &daddr);
+#endif
 }
 
 static void router_sta_print_router_log(void)
@@ -208,6 +239,7 @@ void app_main(void)
             udp_tbx_port_print_status(&udp_tbx);
             router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();
+            router_sta_send_debug_route_probe();
         }
 
         mmosal_task_sleep(50);

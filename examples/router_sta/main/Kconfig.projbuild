@@ -39,4 +39,13 @@ menu "HaLow router STA"
         int "Router service log level"
         default 1
 
+    config ROUTER_STA_DEBUG_ROUTE_PROBE_DNET
+        int "Debug route probe DNET"
+        default 0
+        help
+            If non-zero, periodically send a debug NPDU using this DNET as the
+            BACnet destination address after the UDP/TBX port has learned a
+            matching peer route. This verifies the adapter learned-route
+            transmit path before additional local transports are added.
+
 endmenu

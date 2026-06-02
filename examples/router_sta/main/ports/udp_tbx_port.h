@@ -53,4 +53,5 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
                             const uint8_t *npdu,
                             size_t npdu_len,
                             const BACNET_ADDRESS *daddr);
+bool udp_tbx_port_has_route(const udp_tbx_port *port, uint16_t dnet);
 void udp_tbx_port_print_status(const udp_tbx_port *port);
