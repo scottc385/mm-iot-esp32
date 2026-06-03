@@ -28,9 +28,25 @@ static void print_origin_id(const tbx_origin_t *origin)
         printf("none");
         return;
     }
+    printf("%02x:%02x:%02x:%02x",
+           origin->origin_id[0],
+           origin->origin_id[1],
+           origin->origin_id[2],
+           origin->origin_id[3]);
+    bool printable = true;
     for (size_t i = 0; i < TBX_ORIGIN_ID_LEN; i++) {
         uint8_t c = origin->origin_id[i];
-        putchar((c >= 32 && c <= 126) ? (int)c : '.');
+        if (c < 32 || c > 126) {
+            printable = false;
+            break;
+        }
+    }
+    if (printable) {
+        printf(" \"");
+        for (size_t i = 0; i < TBX_ORIGIN_ID_LEN; i++) {
+            putchar((int)origin->origin_id[i]);
+        }
+        printf("\"");
     }
 }
 
