@@ -12,6 +12,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 
 #include "mm_app_common.h"
@@ -96,6 +99,16 @@ static uint32_t router_advertise_seq;
 static uint32_t debug_app_probe_seq;
 static uint32_t last_status_ms;
 static uint32_t route_snapshot_seq;
+
+static void router_sta_print_memory(const char *tag)
+{
+    printf("MEM[%s] free=%lu min_free=%lu largest=%lu stack_hwm=%lu\n",
+           tag,
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+           (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+           (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+           (unsigned long)uxTaskGetStackHighWaterMark(NULL));
+}
 
 static int32_t get_link_rssi(void)
 {
@@ -315,9 +328,16 @@ void app_main(void)
            CONFIG_ROUTER_STA_UDP_PEER_IP,
            CONFIG_ROUTER_STA_UDP_PEER_PORT,
            CONFIG_ROUTER_STA_UDP_LOCAL_PORT);
+    printf("ROUTER_BUILD local_app=%u local_net=%u local_device=%lu\n",
+           CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? 1U : 0U,
+           CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned)CONFIG_ROUTER_STA_LOCAL_APP_NET : 0U,
+           CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned long)CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID : 0UL);
 
+    router_sta_print_memory("boot");
     app_wlan_init();
+    router_sta_print_memory("after_wlan_init");
     app_wlan_start();
+    router_sta_print_memory("after_wlan_start");
 
     if (!udp_tbx_port_open(&udp_tbx,
                            CONFIG_ROUTER_STA_UDP_LOCAL_PORT,
@@ -328,6 +348,7 @@ void app_main(void)
     }
 
     (void)router_sta_configure_service();
+    router_sta_print_memory("after_router_config");
 
     while (true) {
         uint32_t now = mmosal_get_time_ms();

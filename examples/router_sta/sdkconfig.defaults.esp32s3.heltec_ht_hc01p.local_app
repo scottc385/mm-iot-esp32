@@ -4,3 +4,11 @@
 # until the Morse STA connect path is stable with the larger router build.
 #
 CONFIG_ROUTER_STA_LOCAL_APP_ENABLE=y
+
+#
+# The local-app overlay pulls in more router/BACnet code and previously crashed
+# during the Morse connect path before local-app traffic executed. Keep these
+# stack values higher than the normal profile while isolating memory pressure.
+#
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_FREERTOS_ISR_STACKSIZE=2048
