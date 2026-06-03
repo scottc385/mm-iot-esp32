@@ -108,8 +108,7 @@ static void router_service_emit(void *arg,
     if (!port || !port->ops || !port->ops->send_npdu) {
         return;
     }
-    tb_router_service_impl *impl = service_impl(svc);
-    port->ops->send_npdu(impl ? impl->user_ctx : NULL, port, pdu, len, daddr);
+    port->ops->send_npdu(svc, port, pdu, len, daddr);
 }
 
 static tb_router_route_snapshot make_route_snapshot(const port_info *port,

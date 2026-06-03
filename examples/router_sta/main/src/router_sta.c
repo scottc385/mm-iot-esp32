@@ -22,12 +22,18 @@
 #include "mmwlan.h"
 #include "bacnet/bacenum.h"
 #include "bacnet/npdu.h"
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+#include "bip_port.h"
+#endif
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 #include "local_app_port.h"
 #endif
 #include "router_service.h"
 #include "router_transport.h"
 #include "udp_tbx_port.h"
+#if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
+#include "w5500_probe.h"
+#endif
 
 #ifndef CONFIG_ROUTER_STA_UDP_LOCAL_PORT
 #define CONFIG_ROUTER_STA_UDP_LOCAL_PORT 5000
@@ -55,6 +61,14 @@
 
 #ifndef CONFIG_ROUTER_STA_UDP_TBX_PORT_ID
 #define CONFIG_ROUTER_STA_UDP_TBX_PORT_ID 1
+#endif
+
+#ifndef CONFIG_ROUTER_STA_NET_BLOCK
+#define CONFIG_ROUTER_STA_NET_BLOCK 1
+#endif
+
+#ifndef CONFIG_ROUTER_STA_NODE_ID
+#define CONFIG_ROUTER_STA_NODE_ID 1
 #endif
 
 #ifndef CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
@@ -93,8 +107,35 @@
 #define CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET CONFIG_ROUTER_STA_DEBUG_ROUTE_PROBE_DNET
 #endif
 
+#ifndef CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
+#define CONFIG_ROUTER_STA_W5500_PROBE_ENABLE 0
+#endif
+
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+#define CONFIG_ROUTER_STA_W5500_BIP_ENABLE 0
+#endif
+
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_PORT_ID
+#define CONFIG_ROUTER_STA_W5500_BIP_PORT_ID 3
+#endif
+
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_NET
+#define CONFIG_ROUTER_STA_W5500_BIP_NET 10010
+#endif
+
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO
+#define CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO 1
+#endif
+
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_UDP_PORT
+#define CONFIG_ROUTER_STA_W5500_BIP_UDP_PORT 47808
+#endif
+
 static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+static bip_port w5500_bip;
+#endif
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 static local_app_port local_app;
 static uint32_t router_advertise_seq;
@@ -105,6 +146,31 @@ static uint32_t debug_app_probe_seq;
 #endif
 static uint32_t last_status_ms;
 static uint32_t route_snapshot_seq;
+
+enum {
+    ROUTER_STA_TRANSPORT_SLOT_BIP0 = 0,
+};
+
+static uint16_t router_sta_derive_local_net(uint16_t transport_slot)
+{
+    uint32_t net = (uint32_t)CONFIG_ROUTER_STA_NET_BLOCK * 10000U +
+                   (uint32_t)CONFIG_ROUTER_STA_NODE_ID * 10U +
+                   (uint32_t)transport_slot;
+    if (net == 0 || net >= 65535U) {
+        return 0;
+    }
+    return (uint16_t)net;
+}
+
+static uint16_t router_sta_w5500_bip_net(void)
+{
+#if CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO
+    uint16_t net = router_sta_derive_local_net(ROUTER_STA_TRANSPORT_SLOT_BIP0);
+    return net != 0 ? net : (uint16_t)CONFIG_ROUTER_STA_W5500_BIP_NET;
+#else
+    return (uint16_t)CONFIG_ROUTER_STA_W5500_BIP_NET;
+#endif
+}
 
 static void router_sta_print_memory(const char *tag)
 {
@@ -123,7 +189,7 @@ static int32_t get_link_rssi(void)
 
 static bool router_sta_configure_service(void)
 {
-    tb_router_port_config ports[2];
+    tb_router_port_config ports[4];
     size_t port_count = 0;
 
     ports[port_count++] = (tb_router_port_config){
@@ -139,6 +205,23 @@ static bool router_sta_configure_service(void)
         .static_dnets = NULL,
         .static_dnet_count = 0,
     };
+
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+    if (w5500_bip.sock >= 0) {
+        ports[port_count++] = (tb_router_port_config){
+            .port_id = CONFIG_ROUTER_STA_W5500_BIP_PORT_ID,
+            .net = router_sta_w5500_bip_net(),
+            .kind = TB_ROUTER_TRANSPORT_BIP,
+            .caps = TB_ROUTER_PORT_CAP_UNICAST |
+                    TB_ROUTER_PORT_CAP_BROADCAST |
+                    TB_ROUTER_PORT_CAP_LEARNED_PEERS,
+            .transport_state = &w5500_bip,
+            .ops = &k_bip_router_ops,
+            .static_dnets = NULL,
+            .static_dnet_count = 0,
+        };
+    }
+#endif
 
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
     local_app_port_init(&local_app,
@@ -167,10 +250,17 @@ static bool router_sta_configure_service(void)
                                           port_count,
                                           CONFIG_ROUTER_STA_DNET_TTL_MS,
                                           CONFIG_ROUTER_STA_LOG_LEVEL);
-    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u local_app=%u local_net=%u\n",
+    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u w5500_bip=%u w5500_net=%u local_app=%u local_net=%u\n",
            ok ? "ok" : "failed",
            (unsigned)port_count,
            (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET,
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+           w5500_bip.sock >= 0 ? 1U : 0U,
+           w5500_bip.sock >= 0 ? (unsigned)w5500_bip.net : 0U,
+#else
+           0U,
+           0U,
+#endif
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
            local_app.active ? 1U : 0U,
            local_app.active ? (unsigned)local_app.net : 0U);
@@ -345,6 +435,17 @@ void app_main(void)
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? 1U : 0U,
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned)CONFIG_ROUTER_STA_LOCAL_APP_NET : 0U,
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned long)CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID : 0UL);
+    printf("ROUTER_NUMBERING net_block=%u node_id=%u w5500_bip_net=%u w5500_bip_auto=%u udp_tbx_net=%u\n",
+           (unsigned)CONFIG_ROUTER_STA_NET_BLOCK,
+           (unsigned)CONFIG_ROUTER_STA_NODE_ID,
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+           (unsigned)router_sta_w5500_bip_net(),
+           CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO ? 1U : 0U,
+#else
+           0U,
+           0U,
+#endif
+           (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET);
 
     router_sta_print_memory("boot");
     app_wlan_init();
@@ -360,12 +461,29 @@ void app_main(void)
         printf("UDP_TBX unavailable; router scaffold will not run\n");
     }
 
+#if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
+    (void)w5500_probe_start();
+    router_sta_print_memory("after_w5500_probe");
+#endif
+
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+    if (!bip_port_open(&w5500_bip,
+                       router_sta_w5500_bip_net(),
+                       CONFIG_ROUTER_STA_W5500_BIP_UDP_PORT)) {
+        printf("W5500_BIP unavailable; continuing without field-side BACnet/IP\n");
+    }
+    router_sta_print_memory("after_w5500_bip");
+#endif
+
     (void)router_sta_configure_service();
     router_sta_print_memory("after_router_config");
 
     while (true) {
         uint32_t now = mmosal_get_time_ms();
         udp_tbx_port_poll(&udp_tbx, &router_service, CONFIG_ROUTER_STA_UDP_TBX_PORT_ID, now);
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+        bip_port_poll(&w5500_bip, &router_service, CONFIG_ROUTER_STA_W5500_BIP_PORT_ID, now);
+#endif
         tb_router_service_tick(&router_service, now);
         tb_router_service_drain_events(&router_service, router_sta_print_event, NULL);
         router_sta_print_router_log();
@@ -377,6 +495,9 @@ void app_main(void)
                    (long)get_link_rssi(),
                    (unsigned long)router_probe_seq);
             udp_tbx_port_print_status(&udp_tbx);
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+            bip_port_print_status(&w5500_bip);
+#endif
             router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();
             router_sta_send_iam_router();

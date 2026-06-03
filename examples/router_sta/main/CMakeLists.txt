@@ -35,6 +35,28 @@ if(CONFIG_ROUTER_STA_LOCAL_APP_ENABLE)
     list(APPEND src "ports/local_app_port.c")
 endif()
 
+set(priv_requires
+    driver
+    morselib
+    mm_shims
+    mmipal
+    lwip
+    esp_eth
+    esp_netif
+    esp_event
+    esp_driver_gpio
+    esp_driver_spi
+    esp_timer
+    w5500)
+
+if(CONFIG_ROUTER_STA_W5500_PROBE_ENABLE)
+    list(APPEND src "ports/w5500_probe.c")
+endif()
+
+if(CONFIG_ROUTER_STA_W5500_BIP_ENABLE)
+    list(APPEND src "ports/bip_port.c")
+endif()
+
 set(inc
     "src"
     "ports"
@@ -43,7 +65,7 @@ set(inc
 
 idf_component_register(SRCS ${src}
                        INCLUDE_DIRS ${inc}
-                       PRIV_REQUIRES driver morselib mm_shims mmipal lwip)
+                       PRIV_REQUIRES ${priv_requires})
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     BACDL_BIP=1

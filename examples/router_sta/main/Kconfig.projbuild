@@ -31,6 +31,24 @@ menu "HaLow router STA"
         int "UDP/TBX router port ID"
         default 1
 
+    config ROUTER_STA_NET_BLOCK
+        int "Router BACnet network block"
+        range 1 6
+        default 1
+        help
+            MVP site/deployment block used for auto-derived local BACnet
+            networks. Auto-derived network numbers use:
+            net_block * 10000 + node_id * 10 + transport_slot.
+
+    config ROUTER_STA_NODE_ID
+        int "Router node ID"
+        range 1 999
+        default 1
+        help
+            Operator-assigned short numeric node ID. This is used for
+            auto-derived MVP BACnet network numbers and may also be used by
+            provisioning scripts as the HaLow static IP last octet.
+
     config ROUTER_STA_LOCAL_APP_ENABLE
         bool "Enable in-process local BACnet test app"
         default y
@@ -80,5 +98,126 @@ menu "HaLow router STA"
         help
             Deprecated compatibility alias for older sdkconfig files. Prefer
             ROUTER_STA_DEBUG_APP_PROBE_DNET.
+
+    config ROUTER_STA_W5500_PROBE_ENABLE
+        bool "Enable W5500 Ethernet hardware probe"
+        default n
+        select ETH_USE_SPI_ETHERNET
+        help
+            Starts a W5500 Ethernet interface after the HaLow router path is
+            configured. This is a hardware bring-up probe only; it logs link
+            and DHCP state but does not yet register BACnet/IP as a router
+            transport.
+
+    config ROUTER_STA_W5500_BIP_ENABLE
+        bool "Enable W5500 BACnet/IP router transport"
+        default n
+        select ROUTER_STA_W5500_PROBE_ENABLE
+        help
+            Opens a BACnet/IP UDP socket on the W5500 Ethernet side and
+            registers it as a router service port. This is the first field-side
+            Ethernet transport for the ESP32 HaLow router MVP.
+
+    config ROUTER_STA_W5500_BIP_PORT_ID
+        int "W5500 BACnet/IP router port ID"
+        default 3
+
+    config ROUTER_STA_W5500_BIP_NET_AUTO
+        bool "Auto-derive W5500 BACnet/IP network number"
+        default y
+        help
+            Derive transport.bip.0's BACnet network number from the MVP scheme:
+            net_block * 10000 + node_id * 10 + transport_slot. W5500 B/IP uses
+            transport_slot 0. Disable this to use the explicit configured
+            W5500 BACnet/IP network number below.
+
+    config ROUTER_STA_W5500_BIP_NET
+        int "W5500 BACnet/IP network number"
+        default 10010
+        help
+            Explicit W5500 BACnet/IP network number used when
+            ROUTER_STA_W5500_BIP_NET_AUTO is disabled. Do not use low lab
+            numbers such as 2001 by default; they can conflict with real
+            BACnet networks.
+
+    config ROUTER_STA_W5500_BIP_UDP_PORT
+        int "W5500 BACnet/IP UDP port"
+        default 47808
+
+    config ROUTER_STA_W5500_BIP_BROADCAST_ADDR
+        string "W5500 BACnet/IP broadcast address"
+        default "255.255.255.255"
+        help
+            IPv4 broadcast target for BACnet/IP Original-Broadcast-NPDU
+            frames on the W5500 side. On dual-interface ESP32 builds, prefer
+            the W5500 subnet broadcast address instead of 255.255.255.255 so
+            lwIP does not have to choose between HaLow and Ethernet netifs.
+
+    config ROUTER_STA_W5500_SPI_HOST
+        int "W5500 SPI host"
+        default 2
+
+    config ROUTER_STA_W5500_SPI_MISO_GPIO
+        int "W5500 SPI MISO GPIO"
+        default 38
+
+    config ROUTER_STA_W5500_SPI_MOSI_GPIO
+        int "W5500 SPI MOSI GPIO"
+        default 45
+
+    config ROUTER_STA_W5500_SPI_SCLK_GPIO
+        int "W5500 SPI SCLK GPIO"
+        default 21
+
+    config ROUTER_STA_W5500_SPI_CS_GPIO
+        int "W5500 SPI CS GPIO"
+        default 41
+
+    config ROUTER_STA_W5500_INT_GPIO
+        int "W5500 INT GPIO"
+        default 39
+
+    config ROUTER_STA_W5500_RST_GPIO
+        int "W5500 reset GPIO"
+        default 40
+
+    config ROUTER_STA_W5500_SPI_CLOCK_MHZ
+        int "W5500 SPI clock in MHz"
+        default 10
+
+    config ROUTER_STA_W5500_PHY_ADDR
+        int "W5500 PHY address"
+        default 1
+
+    config ROUTER_STA_W5500_MAC_TASK_STACK_SIZE
+        int "W5500 MAC RX task stack size"
+        default 4096
+
+    config ROUTER_STA_W5500_WAIT_IP_TIMEOUT_MS
+        int "W5500 DHCP wait timeout in milliseconds"
+        default 8000
+
+    config ROUTER_STA_W5500_STATIC_IP_ENABLE
+        bool "Use static IPv4 address for W5500"
+        default n
+        help
+            Disable DHCP on the W5500 Ethernet interface and apply the
+            compile-time IPv4 settings below. Use this for isolated BACnet/IP
+            field networks that do not provide DHCP.
+
+    config ROUTER_STA_W5500_STATIC_IP_ADDR
+        string "W5500 static IPv4 address"
+        default "192.168.92.253"
+        depends on ROUTER_STA_W5500_STATIC_IP_ENABLE
+
+    config ROUTER_STA_W5500_STATIC_NETMASK
+        string "W5500 static IPv4 netmask"
+        default "255.255.255.0"
+        depends on ROUTER_STA_W5500_STATIC_IP_ENABLE
+
+    config ROUTER_STA_W5500_STATIC_GATEWAY
+        string "W5500 static IPv4 gateway"
+        default "192.168.92.1"
+        depends on ROUTER_STA_W5500_STATIC_IP_ENABLE
 
 endmenu

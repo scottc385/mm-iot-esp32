@@ -239,12 +239,15 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
         return;
     }
 
-    uint8_t frame[UDP_TBX_PORT_MAX_FRAME];
     tbx_origin_t origin = {0};
     origin.have_origin_id = true;
     memcpy(origin.origin_id, port->origin_id, TBX_ORIGIN_ID_LEN);
 
-    size_t frame_len = tbx_wrap_bacnet_npdu(frame, sizeof(frame), npdu, npdu_len, &origin);
+    size_t frame_len = tbx_wrap_bacnet_npdu(port->tx_frame,
+                                            sizeof(port->tx_frame),
+                                            npdu,
+                                            npdu_len,
+                                            &origin);
     if (frame_len == 0) {
         printf("TX_TBX_FAIL npdu_len=%u\n", (unsigned)npdu_len);
         port->tx_errors++;
@@ -260,7 +263,7 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
         port->route_misses++;
     }
 
-    int sent = sendto(port->sock, frame, frame_len, 0,
+    int sent = sendto(port->sock, port->tx_frame, frame_len, 0,
                       (const struct sockaddr *)target, sizeof(*target));
     if (sent != (int)frame_len) {
         printf("TX_TBX_ERR errno=%d npdu_len=%u tbx_len=%u\n",
@@ -306,10 +309,9 @@ void udp_tbx_port_poll(udp_tbx_port *port,
     }
 
     while (true) {
-        uint8_t frame[UDP_TBX_PORT_MAX_FRAME];
         struct sockaddr_in from = {0};
         socklen_t from_len = sizeof(from);
-        int got = recvfrom(port->sock, frame, sizeof(frame), 0,
+        int got = recvfrom(port->sock, port->rx_frame, sizeof(port->rx_frame), 0,
                            (struct sockaddr *)&from, &from_len);
         if (got <= 0) {
             return;
@@ -318,7 +320,7 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         tbx_origin_t origin = {0};
         const uint8_t *npdu = NULL;
         size_t npdu_len = 0;
-        if (!tbx_unwrap_bacnet_npdu(frame, (size_t)got, &origin, &npdu, &npdu_len)) {
+        if (!tbx_unwrap_bacnet_npdu(port->rx_frame, (size_t)got, &origin, &npdu, &npdu_len)) {
             port->rx_bad++;
             printf("RX_TBX_BAD from=%s:%u bytes=%d bad=%lu\n",
                    inet_ntoa(from.sin_addr), ntohs(from.sin_port), got,

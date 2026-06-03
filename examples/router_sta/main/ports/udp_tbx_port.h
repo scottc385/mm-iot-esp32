@@ -33,6 +33,8 @@ typedef struct udp_tbx_port {
     uint32_t route_hits;
     uint32_t route_misses;
     uint32_t tx_errors;
+    uint8_t tx_frame[UDP_TBX_PORT_MAX_FRAME];
+    uint8_t rx_frame[UDP_TBX_PORT_MAX_FRAME];
 } udp_tbx_port;
 
 extern const tb_router_transport_ops k_udp_tbx_router_ops;
