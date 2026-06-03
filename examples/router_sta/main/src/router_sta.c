@@ -4,7 +4,9 @@
  * Current milestone: Heltec HT-HC01P joins the Pi HaLow AP, opens a UDP/TBX
  * transport, configures the copied portable router service, and periodically
  * sends a real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX.
- * Inbound TBX frames are unwrapped and submitted to the router service.
+ * Inbound TBX frames are unwrapped and submitted to the router service. A
+ * routed application Who-Is probe can be enabled at build time for diagnostics,
+ * but is disabled in the normal Heltec profile.
  */
 
 #include <stdint.h>

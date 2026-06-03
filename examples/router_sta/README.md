@@ -12,7 +12,8 @@ Current milestone implemented here:
 - periodic real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX
 - inbound TBX frames unwrapped and submitted to the router service
 - route learning from AP-side I-Am-Router-To-Network replies
-- optional routed Who-Is application probe over the learned AP DNET
+- optional routed Who-Is application probe over the learned AP DNET, enabled
+  only by a diagnostic build overlay
 
 Planned MVP transports:
 
@@ -51,6 +52,19 @@ The verified Heltec build output is:
 build-heltec-router/router_sta.bin
 ```
 
+The normal Heltec profile does not send routed application probes; it only
+advertises router reachability with periodic Who-Is-Router-To-Network frames.
+To reproduce the AP local-app validation test, add the probe overlay:
+
+```bash
+idf.py -B build-heltec-router-local-app-probe \
+  -D SDKCONFIG=build-heltec-router-local-app-probe/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.defaults.esp32s3.heltec_ht_hc01p;sdkconfig.defaults.esp32s3.heltec_ht_hc01p.local_app_probe" \
+  build
+```
+
+That overlay sets `CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET=4001`.
+
 ## Pi Test Listener
 
 On the Pi AP:
@@ -74,8 +88,6 @@ RX_TBX from=192.168.50.1:5000 bytes=... origin=.... npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
 UDP_TBX_ROUTE_LEARN dnet=1001 peer=192.168.50.1:5000 total=1
 UDP_TBX_ROUTE_LEARN dnet=4001 peer=192.168.50.1:5000 total=2
-TX_DEBUG_APP_PROBE seq=... dnet=4001 kind=who-is npdu_len=8
-TX_TBX npdu_len=8 tbx_len=17 target=192.168.50.1:5000 dnet=4001 route=hit tx_frames=...
 ROUTER_EVENT type=dnet_change port=1 net=1001
 ROUTER_EVENT type=dnet_change port=1 net=4001
 ROUTER_EVENT type=iar_rx port=1 net=0
@@ -95,7 +107,10 @@ ESP learned route: port=1 port_net=65000 dnet=1001
 ESP learned route: port=1 port_net=65000 dnet=4001
 ESP UDP/TBX adapter learned peer: dnet=4001 -> 192.168.50.1:5000
 ESP debug app probe sends routed Who-Is through learned peer: dnet=4001 route=hit
+Pi local app responds with routed I-Am: snet=4001 sadr=03
 ```
+
+The final two lines require the `local_app_probe` overlay build.
 
 `origin=....` is expected when talking to `router-linux`: its UDP/TBX
 transport hashes `router.node_id` into a binary 4-byte origin ID. The older Lua

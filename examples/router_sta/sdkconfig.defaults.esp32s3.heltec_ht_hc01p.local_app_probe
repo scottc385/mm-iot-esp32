@@ -1,0 +1,8 @@
+#
+# Optional AP local-app route probe overlay.
+#
+# Add this file to SDKCONFIG_DEFAULTS after sdkconfig.defaults.esp32s3.heltec_ht_hc01p
+# when explicitly validating routed BACnet application traffic to the Pi-side
+# in-process local app on DNET 4001.
+#
+CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET=4001
