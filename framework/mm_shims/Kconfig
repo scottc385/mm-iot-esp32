@@ -50,6 +50,14 @@ menu "Morse Micro Shim Configuration"
             Out of band interupt pin used to indicate that
             the MM chip has data for the host.
 
+    config MM_SPI_IRQ_FALLING_EDGE
+        bool "Use falling-edge trigger for MM SPI IRQ"
+        default n
+        help
+            Use a falling-edge GPIO interrupt for the Morse SPI IRQ instead of
+            the default low-level interrupt. This can avoid an interrupt storm
+            if the IRQ line is already held low during ESP32 startup.
+
     config MM_BCF_FILE
         string "MM Board Configuration File"
         default "bcf_mf08651_us.mbin"
