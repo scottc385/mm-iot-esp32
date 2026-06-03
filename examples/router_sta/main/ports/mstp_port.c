@@ -46,6 +46,15 @@
 #ifndef CONFIG_ROUTER_STA_MSTP_RX_STREAM_SIZE
 #define CONFIG_ROUTER_STA_MSTP_RX_STREAM_SIZE 4096
 #endif
+#ifndef CONFIG_ROUTER_STA_MSTP_PDU_QUEUE_LEN
+#define CONFIG_ROUTER_STA_MSTP_PDU_QUEUE_LEN 16
+#endif
+#ifndef CONFIG_ROUTER_STA_MSTP_DRAIN_MAX
+#define CONFIG_ROUTER_STA_MSTP_DRAIN_MAX 8
+#endif
+#ifndef CONFIG_ROUTER_STA_MSTP_LOG_FRAMES
+#define CONFIG_ROUTER_STA_MSTP_LOG_FRAMES 0
+#endif
 #ifndef CONFIG_ROUTER_STA_MSTP_FSM_TASK_STACK_SIZE
 #define CONFIG_ROUTER_STA_MSTP_FSM_TASK_STACK_SIZE 4096
 #endif
@@ -54,7 +63,7 @@
 #endif
 
 #define UART_EVENT_QUEUE_SIZE 20
-#define MSTP_PDU_QUEUE_LEN 16
+#define MSTP_PDU_QUEUE_LEN CONFIG_ROUTER_STA_MSTP_PDU_QUEUE_LEN
 
 typedef struct {
     uint16_t len;
@@ -282,6 +291,12 @@ static void mstp_fsm_task(void *arg)
             slot->sadr_len = src.mac_len;
             slot->sadr = src.mac_len > 0 ? src.mac[0] : 0;
             if (s_pdu_ready_q && xQueueSend(s_pdu_ready_q, &slot_idx, 0) == pdTRUE) {
+                if (s_port_stats) {
+                    UBaseType_t queued = uxQueueMessagesWaiting(s_pdu_ready_q);
+                    if ((uint32_t)queued > s_port_stats->pdu_queue_depth_max) {
+                        s_port_stats->pdu_queue_depth_max = (uint32_t)queued;
+                    }
+                }
                 continue;
             }
             if (s_port_stats) {
@@ -421,11 +436,13 @@ static void mstp_router_send_npdu(tb_router_service *svc,
     int sent = dlmstp_send_pdu(&dest, &npdu_data, (uint8_t *)npdu, (unsigned)npdu_len);
     if (sent > 0) {
         port->tx_pdu++;
+#if CONFIG_ROUTER_STA_MSTP_LOG_FRAMES
         printf("TX_MSTP net=%u dst=%u npdu_len=%u tx_pdu=%lu\n",
                (unsigned)port->net,
                (unsigned)dest.mac[0],
                (unsigned)npdu_len,
                (unsigned long)port->tx_pdu);
+#endif
     } else {
         port->tx_errors++;
         printf("TX_MSTP_ERR net=%u dst=%u npdu_len=%u errors=%lu\n",
@@ -450,7 +467,7 @@ void mstp_port_poll(mstp_port *port,
         return;
     }
 
-    for (unsigned drained = 0; drained < 8; drained++) {
+    for (unsigned drained = 0; drained < CONFIG_ROUTER_STA_MSTP_DRAIN_MAX; drained++) {
         int slot_idx = -1;
         if (xQueueReceive(s_pdu_ready_q, &slot_idx, 0) != pdTRUE) {
             return;
@@ -462,12 +479,14 @@ void mstp_port_poll(mstp_port *port,
         mstp_pdu_slot *slot = &s_pdu_slots[slot_idx];
         uint8_t sadr[1] = { slot->sadr };
         port->rx_pdu++;
+#if CONFIG_ROUTER_STA_MSTP_LOG_FRAMES
         printf("RX_MSTP net=%u src=%s%u npdu_len=%u rx_pdu=%lu\n",
                (unsigned)port->net,
                slot->sadr_len ? "" : "-",
                slot->sadr_len ? (unsigned)slot->sadr : 0U,
                (unsigned)slot->len,
                (unsigned long)port->rx_pdu);
+#endif
         int rc = tb_router_service_handle_frame(svc,
                                                 router_port_id,
                                                 slot->buf,
@@ -479,7 +498,9 @@ void mstp_port_poll(mstp_port *port,
         if (rc >= 0) {
             port->rx_router_accepted++;
         }
+#if CONFIG_ROUTER_STA_MSTP_LOG_FRAMES
         printf("RX_MSTP_ROUTER rc=%d accepted=%lu\n", rc, (unsigned long)port->rx_router_accepted);
+#endif
         (void)xQueueSend(s_pdu_free_q, &slot_idx, 0);
     }
 }
@@ -491,7 +512,7 @@ void mstp_port_print_status(const mstp_port *port)
     }
     UBaseType_t ready = s_pdu_ready_q ? uxQueueMessagesWaiting(s_pdu_ready_q) : 0;
     UBaseType_t free_slots = s_pdu_free_q ? uxQueueMessagesWaiting(s_pdu_free_q) : 0;
-    printf("MSTP_STATUS net=%u mac=%u baud=%lu tx_pdu=%lu rx_pdu=%lu router_rx=%lu tx_bytes=%lu rx_bytes=%lu tx_errors=%lu rx_drops=%lu pdu_drops=%lu ready_q=%lu free_q=%lu\n",
+    printf("MSTP_STATUS net=%u mac=%u baud=%lu tx_pdu=%lu rx_pdu=%lu router_rx=%lu tx_bytes=%lu rx_bytes=%lu tx_errors=%lu rx_drops=%lu pdu_drops=%lu ready_q=%lu/%u free_q=%lu depth_max=%lu drain_max=%u log_frames=%u\n",
            (unsigned)port->net,
            (unsigned)port->mac,
            (unsigned long)port->baud,
@@ -504,5 +525,9 @@ void mstp_port_print_status(const mstp_port *port)
            (unsigned long)port->rx_drops,
            (unsigned long)port->pdu_drops,
            (unsigned long)ready,
-           (unsigned long)free_slots);
+           (unsigned)MSTP_PDU_QUEUE_LEN,
+           (unsigned long)free_slots,
+           (unsigned long)port->pdu_queue_depth_max,
+           (unsigned)CONFIG_ROUTER_STA_MSTP_DRAIN_MAX,
+           (unsigned)CONFIG_ROUTER_STA_MSTP_LOG_FRAMES);
 }

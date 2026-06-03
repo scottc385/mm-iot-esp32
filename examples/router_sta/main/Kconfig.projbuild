@@ -16,6 +16,14 @@ menu "HaLow router STA"
         int "Status/heartbeat interval in milliseconds"
         default 5000
 
+    config ROUTER_STA_LOOP_DELAY_MS
+        int "Router main loop delay in milliseconds"
+        default 50
+        help
+            Delay between router-service poll passes. Keep low for latency
+            sensitive field transports such as MS/TP; the MS/TP profile uses
+            5 ms to avoid adding router-loop latency to ReadProperty traffic.
+
     config ROUTER_STA_TBX_ORIGIN_ID
         string "Router STA TBX origin ID"
         default "ESP1"
@@ -385,6 +393,33 @@ menu "HaLow router STA"
         int "MS/TP UART RX stream buffer size"
         default 4096
         depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_PDU_QUEUE_LEN
+        int "MS/TP complete NPDU receive queue length"
+        range 4 64
+        default 16
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Number of complete MS/TP NPDUs that can be queued between the
+            MS/TP FSM task and the router loop. Increase this for bursty
+            Who-Is/I-Am discovery traffic.
+
+    config ROUTER_STA_MSTP_DRAIN_MAX
+        int "MS/TP NPDUs drained per router pass"
+        range 1 64
+        default 8
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Maximum queued MS/TP NPDUs drained into the router service per
+            main-loop pass. Higher values prevent burst backlogs.
+
+    config ROUTER_STA_MSTP_LOG_FRAMES
+        bool "Log each routed MS/TP frame"
+        default n
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Keep disabled during timing tests. Status counters remain enabled;
+            frame-level logs can perturb MS/TP timing during bursts.
 
     config ROUTER_STA_MSTP_FSM_TASK_STACK_SIZE
         int "MS/TP FSM task stack size"

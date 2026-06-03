@@ -20,6 +20,7 @@ typedef struct mstp_port {
     uint32_t tx_errors;
     uint32_t rx_drops;
     uint32_t pdu_drops;
+    uint32_t pdu_queue_depth_max;
     uint32_t rx_bytes;
     uint32_t tx_bytes;
 } mstp_port;

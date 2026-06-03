@@ -57,6 +57,10 @@
 #define CONFIG_ROUTER_STA_STATUS_INTERVAL_MS 5000
 #endif
 
+#ifndef CONFIG_ROUTER_STA_LOOP_DELAY_MS
+#define CONFIG_ROUTER_STA_LOOP_DELAY_MS 50
+#endif
+
 #ifndef CONFIG_ROUTER_STA_TBX_ORIGIN_ID
 #define CONFIG_ROUTER_STA_TBX_ORIGIN_ID "ESP1"
 #endif
@@ -638,6 +642,6 @@ void app_main(void)
         }
 #endif
 
-        mmosal_task_sleep(50);
+        mmosal_task_sleep(CONFIG_ROUTER_STA_LOOP_DELAY_MS);
     }
 }
