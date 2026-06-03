@@ -38,6 +38,8 @@
 
 #include <stdbool.h>
 
+typedef bool (*app_wlan_abort_cb)(void);
+
 /**
  * Initializes the WLAN interface using settings specified in the config store.
  *
@@ -53,6 +55,12 @@ void app_wlan_init(void);
  * If no settings are found, the defaults are used.
  */
 void app_wlan_start(void);
+
+/**
+ * Starts WLAN and waits for link, returning false if should_abort returns true
+ * before the link comes up.
+ */
+bool app_wlan_start_until(app_wlan_abort_cb should_abort);
 
 /**
  * Returns whether the IP link is currently up.

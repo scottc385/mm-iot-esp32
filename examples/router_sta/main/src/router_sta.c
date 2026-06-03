@@ -194,6 +194,7 @@ static bool w5500_ip_seen;
 #endif
 static uint32_t route_snapshot_seq;
 static volatile bool reboot_requested;
+static bool wlan_initialized;
 
 enum {
     ROUTER_STA_TRANSPORT_SLOT_BIP0 = 0,
@@ -550,6 +551,11 @@ void router_sta_request_reboot(void)
     reboot_requested = true;
 }
 
+bool router_sta_reboot_is_requested(void)
+{
+    return reboot_requested;
+}
+
 static void router_sta_safe_reboot(void)
 {
     printf("ROUTER_REBOOT begin\n");
@@ -560,12 +566,14 @@ static void router_sta_safe_reboot(void)
 #if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
     w5500_probe_stop_reset();
 #endif
-    printf("ROUTER_REBOOT wlan_stop\n");
-    app_wlan_stop();
-    vTaskDelay(pdMS_TO_TICKS(100));
-    printf("ROUTER_REBOOT wlan_hard_reset\n");
-    mmhal_wlan_hard_reset();
-    vTaskDelay(pdMS_TO_TICKS(250));
+    if (wlan_initialized) {
+        printf("ROUTER_REBOOT wlan_stop\n");
+        app_wlan_stop();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        printf("ROUTER_REBOOT wlan_hard_reset\n");
+        mmhal_wlan_hard_reset();
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
     printf("ROUTER_REBOOT esp_restart\n");
     fflush(stdout);
     esp_restart();
@@ -613,10 +621,18 @@ void app_main(void)
            runtime_cfg->w5500_gateway,
            runtime_cfg->mstp_enable ? 1U : 0U);
 
+    router_cli_start();
+
     router_sta_print_memory("boot");
+    if (reboot_requested) {
+        router_sta_safe_reboot();
+    }
     app_wlan_init();
+    wlan_initialized = true;
     router_sta_print_memory("after_wlan_init");
-    app_wlan_start();
+    if (!app_wlan_start_until(router_sta_reboot_is_requested)) {
+        router_sta_safe_reboot();
+    }
     router_sta_print_memory("after_wlan_start");
 
     if (!udp_tbx_port_open(&udp_tbx,
@@ -657,7 +673,6 @@ void app_main(void)
 
     (void)router_sta_configure_service();
     router_sta_print_memory("after_router_config");
-    router_cli_start();
 
     while (true) {
         if (reboot_requested) {

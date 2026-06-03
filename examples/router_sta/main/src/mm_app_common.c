@@ -156,7 +156,7 @@ void app_wlan_init(void)
            version.morse_fw_version, version.morselib_version, version.morse_chip_id);
 }
 
-void app_wlan_start(void)
+bool app_wlan_start_until(app_wlan_abort_cb should_abort)
 {
     enum mmwlan_status status;
 
@@ -179,9 +179,19 @@ void app_wlan_start(void)
     /* Wait for link status callback.
     * Use a binary semaphore to block us until Link is up.
     */
-    mmosal_semb_wait(link_established, UINT32_MAX);
+    while (!mmosal_semb_wait(link_established, 250)) {
+        if (should_abort && should_abort()) {
+            return false;
+        }
+    }
 
     /* Wi-Fi link is now established, return to caller */
+    return true;
+}
+
+void app_wlan_start(void)
+{
+    (void)app_wlan_start_until(NULL);
 }
 
 void app_wlan_stop(void)
