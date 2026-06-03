@@ -231,4 +231,69 @@ menu "HaLow router STA"
         default "192.168.92.1"
         depends on ROUTER_STA_W5500_STATIC_IP_ENABLE
 
+    config ROUTER_STA_RS485_PROBE_ENABLE
+        bool "Enable isolated RS485/MS-TP hardware probe"
+        default n
+        help
+            Initializes the Proto-2 RS485 UART and transceiver control pins
+            without registering MS/TP as a router port. Use this first to
+            validate TX, RX, DE, and /RE wiring before adding BACnet MS/TP.
+
+    config ROUTER_STA_RS485_UART_NUM
+        int "RS485 UART number"
+        default 1
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+
+    config ROUTER_STA_RS485_TX_GPIO
+        int "RS485 TX GPIO"
+        default 10
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+
+    config ROUTER_STA_RS485_RX_GPIO
+        int "RS485 RX GPIO"
+        default 11
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+
+    config ROUTER_STA_RS485_DE_GPIO
+        int "RS485 driver-enable GPIO"
+        default 12
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+
+    config ROUTER_STA_RS485_RE_N_GPIO
+        int "RS485 receiver-enable active-low GPIO"
+        default 13
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+        help
+            Set to -1 if DE and /RE are tied together externally. Proto-2 uses
+            separate DE and /RE pins.
+
+    config ROUTER_STA_RS485_BAUD
+        int "RS485 probe baud rate"
+        default 38400
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+
+    config ROUTER_STA_RS485_PROBE_INTERVAL_MS
+        int "RS485 probe transmit interval in milliseconds"
+        default 0
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+        help
+            Sends a short diagnostic byte sequence at this interval with DE
+            asserted. Set 0 for receive-only probe mode.
+
+    config ROUTER_STA_RS485_PROBE_LOG_FRAMES
+        bool "Log every parsed RS485/MS-TP probe frame"
+        default n
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+        help
+            Enable verbose per-frame probe logging. Leave disabled for normal
+            bring-up so UART console logging does not perturb the MS/TP bus.
+
+    config ROUTER_STA_RS485_PROBE_SUMMARY_INTERVAL_MS
+        int "RS485/MS-TP probe summary interval in milliseconds"
+        default 5000
+        depends on ROUTER_STA_RS485_PROBE_ENABLE
+        help
+            Emit aggregate passive probe counters at this interval. Set 0 to
+            disable summaries.
+
 endmenu

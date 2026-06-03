@@ -28,6 +28,9 @@
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 #include "local_app_port.h"
 #endif
+#if CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
+#include "rs485_probe.h"
+#endif
 #include "router_service.h"
 #include "router_transport.h"
 #include "udp_tbx_port.h"
@@ -129,6 +132,10 @@
 
 #ifndef CONFIG_ROUTER_STA_W5500_BIP_UDP_PORT
 #define CONFIG_ROUTER_STA_W5500_BIP_UDP_PORT 47808
+#endif
+
+#ifndef CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
+#define CONFIG_ROUTER_STA_RS485_PROBE_ENABLE 0
 #endif
 
 static tb_router_service router_service;
@@ -505,6 +512,11 @@ void app_main(void)
     router_sta_print_memory("after_w5500_bip");
 #endif
 
+#if CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
+    (void)rs485_probe_start();
+    router_sta_print_memory("after_rs485_probe");
+#endif
+
     (void)router_sta_configure_service();
     router_sta_print_memory("after_router_config");
 
@@ -513,6 +525,9 @@ void app_main(void)
         udp_tbx_port_poll(&udp_tbx, &router_service, CONFIG_ROUTER_STA_UDP_TBX_PORT_ID, now);
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
         bip_port_poll(&w5500_bip, &router_service, CONFIG_ROUTER_STA_W5500_BIP_PORT_ID, now);
+#endif
+#if CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
+        rs485_probe_poll(now);
 #endif
         tb_router_service_tick(&router_service, now);
         tb_router_service_drain_events(&router_service, router_sta_print_event, NULL);

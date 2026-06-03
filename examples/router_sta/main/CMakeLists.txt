@@ -46,6 +46,7 @@ set(priv_requires
     esp_event
     esp_driver_gpio
     esp_driver_spi
+    esp_driver_uart
     esp_timer
     w5500)
 
@@ -55,6 +56,10 @@ endif()
 
 if(CONFIG_ROUTER_STA_W5500_BIP_ENABLE)
     list(APPEND src "ports/bip_port.c")
+endif()
+
+if(CONFIG_ROUTER_STA_RS485_PROBE_ENABLE)
+    list(APPEND src "ports/rs485_probe.c")
 endif()
 
 set(inc
