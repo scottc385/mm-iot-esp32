@@ -73,11 +73,14 @@ TX_TBX npdu_len=7 tbx_len=16 tx_frames=4
 RX_TBX from=192.168.50.1:5000 bytes=... origin=AP01 npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
 UDP_TBX_ROUTE_LEARN dnet=1001 peer=192.168.50.1:5000 total=1
-TX_DEBUG_APP_PROBE seq=... dnet=1001 kind=who-is npdu_len=8
-TX_TBX npdu_len=8 tbx_len=17 target=192.168.50.1:5000 dnet=1001 route=hit tx_frames=...
+UDP_TBX_ROUTE_LEARN dnet=4001 peer=192.168.50.1:5000 total=2
+TX_DEBUG_APP_PROBE seq=... dnet=4001 kind=who-is npdu_len=8
+TX_TBX npdu_len=8 tbx_len=17 target=192.168.50.1:5000 dnet=4001 route=hit tx_frames=...
 ROUTER_EVENT type=dnet_change port=1 net=1001
+ROUTER_EVENT type=dnet_change port=1 net=4001
 ROUTER_EVENT type=iar_rx port=1 net=0
 ROUTER_ROUTE port=1 port_net=65000 dnet=1001 age_ms=... static=0 next_hop=0 peer=0
+ROUTER_ROUTE port=1 port_net=65000 dnet=4001 age_ms=... static=0 next_hop=0 peer=0
 ```
 
 For manual receive-path testing, send a TBX-wrapped BACnet NPDU from the Pi.
@@ -87,10 +90,11 @@ Verified AP responder milestone:
 
 ```text
 ESP -> AP: TBX WIR, npdu=01 a0 ff ff 00 ff 00
-AP -> ESP: TBX I-Am-Router, npdu=01 a0 ff ff 00 ff 01 03 e9
+AP -> ESP: TBX I-Am-Router, includes DNETs 1001 and 4001
 ESP learned route: port=1 port_net=65000 dnet=1001
-ESP UDP/TBX adapter learned peer: dnet=1001 -> 192.168.50.1:5000
-ESP debug app probe sends routed Who-Is through learned peer: dnet=1001 route=hit
+ESP learned route: port=1 port_net=65000 dnet=4001
+ESP UDP/TBX adapter learned peer: dnet=4001 -> 192.168.50.1:5000
+ESP debug app probe sends routed Who-Is through learned peer: dnet=4001 route=hit
 ```
 
 ## Source Sharing
