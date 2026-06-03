@@ -9,7 +9,9 @@ Current milestone implemented here:
 - static IP on the HaLow interface
 - UDP/TBX socket on the HaLow link
 - copied portable `wbacnet-fw` router service configured with one UDP/TBX port
+- in-process ESP local BACnet app on DNET `5001`
 - periodic real BACnet network-layer Who-Is-Router-To-Network NPDU over TBX
+- periodic I-Am-Router-To-Network advertising the ESP local app DNET
 - inbound TBX frames unwrapped and submitted to the router service
 - route learning from AP-side I-Am-Router-To-Network replies
 - optional routed Who-Is application probe over the learned AP DNET, enabled
@@ -80,9 +82,10 @@ BACnet network-layer Who-Is-Router-To-Network NPDU, not a text smoke payload.
 Expected ESP32 log examples:
 
 ```text
-ROUTER_CONFIG ok ports=1 tbx_net=65000
+ROUTER_CONFIG ok ports=2 tbx_net=65000 local_app=1 local_net=5001
 ROUTER_STA status link=up rssi=-20 wir_seq=3
 TX_ROUTER_WIR seq=4 npdu_len=7
+TX_ROUTER_IAR seq=4 nets=5001 npdu_len=9
 TX_TBX npdu_len=7 tbx_len=16 tx_frames=4
 RX_TBX from=192.168.50.1:5000 bytes=... origin=.... npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
@@ -111,6 +114,15 @@ Pi local app responds with routed I-Am: snet=4001 sadr=03
 ```
 
 The final two lines require the `local_app_probe` overlay build.
+
+Verified ESP local-app milestone:
+
+```text
+ESP advertises I-Am-Router for DNET 5001 over UDP/TBX
+AP/router-linux learns DNET 5001 via the ESP TBX peer
+AP can route a Who-Is application NPDU to DNET 5001
+ESP local app responds with I-Am for device 500100
+```
 
 `origin=....` is expected when talking to `router-linux`: its UDP/TBX
 transport hashes `router.node_id` into a binary 4-byte origin ID. The older Lua

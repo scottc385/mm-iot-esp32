@@ -31,6 +31,31 @@ menu "HaLow router STA"
         int "UDP/TBX router port ID"
         default 1
 
+    config ROUTER_STA_LOCAL_APP_ENABLE
+        bool "Enable in-process local BACnet test app"
+        default y
+        help
+            Registers a minimal local BACnet application port behind the ESP32
+            router. The current implementation responds to routed Who-Is with
+            I-Am, and is used to validate Pi -> ESP routed application traffic
+            before W5500 BACnet/IP and RS485 MS/TP transports are added.
+
+    config ROUTER_STA_LOCAL_APP_PORT_ID
+        int "Local app router port ID"
+        default 2
+
+    config ROUTER_STA_LOCAL_APP_NET
+        int "Local app BACnet network number"
+        default 5001
+
+    config ROUTER_STA_LOCAL_APP_DEVICE_ID
+        int "Local app BACnet device instance"
+        default 500100
+
+    config ROUTER_STA_LOCAL_APP_OBJECT_NAME
+        string "Local app BACnet object name"
+        default "esp32-local-app"
+
     config ROUTER_STA_DNET_TTL_MS
         int "Router learned DNET TTL in milliseconds"
         default 60000

@@ -19,6 +19,7 @@
 #include "mmwlan.h"
 #include "bacnet/bacenum.h"
 #include "bacnet/npdu.h"
+#include "local_app_port.h"
 #include "router_service.h"
 #include "router_transport.h"
 #include "udp_tbx_port.h"
@@ -51,6 +52,26 @@
 #define CONFIG_ROUTER_STA_UDP_TBX_PORT_ID 1
 #endif
 
+#ifndef CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
+#define CONFIG_ROUTER_STA_LOCAL_APP_ENABLE 0
+#endif
+
+#ifndef CONFIG_ROUTER_STA_LOCAL_APP_PORT_ID
+#define CONFIG_ROUTER_STA_LOCAL_APP_PORT_ID 2
+#endif
+
+#ifndef CONFIG_ROUTER_STA_LOCAL_APP_NET
+#define CONFIG_ROUTER_STA_LOCAL_APP_NET 5001
+#endif
+
+#ifndef CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID
+#define CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID 500100
+#endif
+
+#ifndef CONFIG_ROUTER_STA_LOCAL_APP_OBJECT_NAME
+#define CONFIG_ROUTER_STA_LOCAL_APP_OBJECT_NAME "esp32-local-app"
+#endif
+
 #ifndef CONFIG_ROUTER_STA_DNET_TTL_MS
 #define CONFIG_ROUTER_STA_DNET_TTL_MS 60000
 #endif
@@ -69,7 +90,9 @@
 
 static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
+static local_app_port local_app;
 static uint32_t router_probe_seq;
+static uint32_t router_advertise_seq;
 static uint32_t debug_app_probe_seq;
 static uint32_t last_status_ms;
 static uint32_t route_snapshot_seq;
@@ -81,32 +104,56 @@ static int32_t get_link_rssi(void)
 
 static bool router_sta_configure_service(void)
 {
-    tb_router_port_config ports[] = {
-        {
-            .port_id = CONFIG_ROUTER_STA_UDP_TBX_PORT_ID,
-            .net = CONFIG_ROUTER_STA_UDP_TBX_NET,
-            .kind = TB_ROUTER_TRANSPORT_TBX_UDP,
-            .caps = TB_ROUTER_PORT_CAP_UNICAST |
-                    TB_ROUTER_PORT_CAP_BROADCAST |
-                    TB_ROUTER_PORT_CAP_STATIC_PEERS |
-                    TB_ROUTER_PORT_CAP_ROUTE_META,
-            .transport_state = &udp_tbx,
-            .ops = &k_udp_tbx_router_ops,
+    tb_router_port_config ports[2];
+    size_t port_count = 0;
+
+    ports[port_count++] = (tb_router_port_config){
+        .port_id = CONFIG_ROUTER_STA_UDP_TBX_PORT_ID,
+        .net = CONFIG_ROUTER_STA_UDP_TBX_NET,
+        .kind = TB_ROUTER_TRANSPORT_TBX_UDP,
+        .caps = TB_ROUTER_PORT_CAP_UNICAST |
+                TB_ROUTER_PORT_CAP_BROADCAST |
+                TB_ROUTER_PORT_CAP_STATIC_PEERS |
+                TB_ROUTER_PORT_CAP_ROUTE_META,
+        .transport_state = &udp_tbx,
+        .ops = &k_udp_tbx_router_ops,
+        .static_dnets = NULL,
+        .static_dnet_count = 0,
+    };
+
+#if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
+    local_app_port_init(&local_app,
+                        &router_service,
+                        CONFIG_ROUTER_STA_LOCAL_APP_PORT_ID,
+                        CONFIG_ROUTER_STA_LOCAL_APP_NET,
+                        CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID,
+                        CONFIG_ROUTER_STA_LOCAL_APP_OBJECT_NAME);
+    if (local_app.active) {
+        ports[port_count++] = (tb_router_port_config){
+            .port_id = CONFIG_ROUTER_STA_LOCAL_APP_PORT_ID,
+            .net = CONFIG_ROUTER_STA_LOCAL_APP_NET,
+            .kind = TB_ROUTER_TRANSPORT_LOCAL_APP,
+            .caps = TB_ROUTER_PORT_CAP_UNICAST | TB_ROUTER_PORT_CAP_BROADCAST,
+            .transport_state = &local_app,
+            .ops = &k_local_app_router_ops,
             .static_dnets = NULL,
             .static_dnet_count = 0,
-        },
-    };
+        };
+    }
+#endif
 
     bool ok = tb_router_service_configure(&router_service,
                                           NULL,
                                           ports,
-                                          sizeof(ports) / sizeof(ports[0]),
+                                          port_count,
                                           CONFIG_ROUTER_STA_DNET_TTL_MS,
                                           CONFIG_ROUTER_STA_LOG_LEVEL);
-    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u\n",
+    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u local_app=%u local_net=%u\n",
            ok ? "ok" : "failed",
-           (unsigned)(sizeof(ports) / sizeof(ports[0])),
-           (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET);
+           (unsigned)port_count,
+           (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET,
+           local_app.active ? 1U : 0U,
+           local_app.active ? (unsigned)local_app.net : 0U);
     return ok;
 }
 
@@ -123,6 +170,30 @@ static void router_sta_send_whois_router(void)
     printf("TX_ROUTER_WIR seq=%lu npdu_len=%u\n",
            (unsigned long)router_probe_seq, (unsigned)len);
     udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
+}
+
+static void router_sta_send_iam_router(void)
+{
+#if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
+    if (!local_app.active) {
+        return;
+    }
+
+    uint16_t nets[] = { local_app.net };
+    uint8_t npdu[64];
+    size_t len = tb_router_npdu_build_iar(npdu, sizeof(npdu), nets, sizeof(nets) / sizeof(nets[0]));
+    if (len == 0) {
+        printf("TX_ROUTER_IAR build failed\n");
+        return;
+    }
+
+    router_advertise_seq++;
+    printf("TX_ROUTER_IAR seq=%lu nets=%u npdu_len=%u\n",
+           (unsigned long)router_advertise_seq,
+           (unsigned)local_app.net,
+           (unsigned)len);
+    udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
+#endif
 }
 
 static size_t router_sta_build_debug_whois_npdu(uint8_t *out, size_t out_cap, uint16_t dnet)
@@ -274,6 +345,7 @@ void app_main(void)
             udp_tbx_port_print_status(&udp_tbx);
             router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();
+            router_sta_send_iam_router();
             router_sta_send_debug_app_probe();
         }
 
