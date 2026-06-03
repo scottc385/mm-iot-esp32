@@ -7,10 +7,11 @@
 #include <unistd.h>
 
 #include "lwip/inet.h"
+#include "mmosal.h"
 #include "tbx.h"
 
 #ifndef CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
-#define CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES 1
+#define CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES 0
 #endif
 
 static void origin_id_from_string(uint8_t out[TBX_ORIGIN_ID_LEN], const char *origin_id)
@@ -148,6 +149,16 @@ bool udp_tbx_port_open(udp_tbx_port *port,
     printf("UDP_TBX_OPEN local_port=%u peer=%s:%u origin_id=%s\n",
            (unsigned)local_port, peer_ip, (unsigned)peer_port, origin_id ? origin_id : "");
     return true;
+}
+
+void udp_tbx_port_close(udp_tbx_port *port)
+{
+    if (!port || port->sock < 0) {
+        return;
+    }
+    close(port->sock);
+    port->sock = -1;
+    printf("UDP_TBX_CLOSE\n");
 }
 
 static bool is_local_origin(const udp_tbx_port *port, const tbx_origin_t *origin)
@@ -372,6 +383,7 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         udp_tbx_log_decoded_app_npdu(npdu, npdu_len);
 
         uint8_t src_flags = origin.net_owner ? TB_ROUTER_SRC_FLAG_NET_OWNER : 0;
+        uint32_t handle_start_ms = mmosal_get_time_ms();
         int rc = tb_router_service_handle_frame(svc,
                                                 router_port_id,
                                                 npdu,
@@ -380,6 +392,12 @@ void udp_tbx_port_poll(udp_tbx_port *port,
                                                 0,
                                                 src_flags,
                                                 now_ms);
+        uint32_t handle_ms = mmosal_get_time_ms() - handle_start_ms;
+        port->handle_count++;
+        port->handle_total_ms += handle_ms;
+        if (handle_ms > port->handle_max_ms) {
+            port->handle_max_ms = handle_ms;
+        }
         if (rc >= 0) {
             port->rx_router_accepted++;
         }
@@ -394,7 +412,9 @@ void udp_tbx_port_print_status(const udp_tbx_port *port)
     if (!port) {
         return;
     }
-    printf("UDP_TBX_STATUS tx=%lu rx=%lu bad=%lu loop=%lu router_rx=%lu routes=%lu route_hits=%lu route_misses=%lu tx_errors=%lu\n",
+    uint32_t handle_avg_ms = port->handle_count ?
+        (port->handle_total_ms / port->handle_count) : 0;
+    printf("UDP_TBX_STATUS tx=%lu rx=%lu bad=%lu loop=%lu router_rx=%lu routes=%lu route_hits=%lu route_misses=%lu tx_errors=%lu handle_ms_avg=%lu handle_ms_max=%lu\n",
            (unsigned long)port->tx_frames,
            (unsigned long)port->rx_frames,
            (unsigned long)port->rx_bad,
@@ -403,5 +423,7 @@ void udp_tbx_port_print_status(const udp_tbx_port *port)
            (unsigned long)port->routes_learned,
            (unsigned long)port->route_hits,
            (unsigned long)port->route_misses,
-           (unsigned long)port->tx_errors);
+           (unsigned long)port->tx_errors,
+           (unsigned long)handle_avg_ms,
+           (unsigned long)port->handle_max_ms);
 }

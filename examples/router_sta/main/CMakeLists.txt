@@ -5,6 +5,8 @@ set(src
     "src/mm_app_loadconfig.c"
     "src/mm_app_common.c"
     "src/mm_app_regdb.c"
+    "src/router_cli.c"
+    "src/router_runtime_config.c"
     "wbacnet/tbx.c"
     "wbacnet/router/router_core.c"
     "wbacnet/router/router_policy.c"
@@ -48,6 +50,8 @@ set(priv_requires
     esp_driver_spi
     esp_driver_uart
     esp_timer
+    nvs_flash
+    console
     w5500)
 
 if(CONFIG_ROUTER_STA_W5500_PROBE_ENABLE)
@@ -89,6 +93,24 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     BBMD_ENABLED=0
     BACNET_STACK_DEPRECATED_DISABLE=1
     ROUTER_CORE_ENABLE_LEGACY=0)
+
+if(CONFIG_ROUTER_STA_HALOW_CHANNEL_1MHZ_MID)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=2)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_1MHZ_HIGH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=3)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_2MHZ_MID)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=4)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_2MHZ_HIGH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=5)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_4MHZ_LOW)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=6)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_4MHZ_MID)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=7)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_4MHZ_HIGH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=8)
+elseif(CONFIG_ROUTER_STA_HALOW_CHANNEL_8MHZ_HIGH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE IPERF_TEST_CHANNEL_PRESET=9)
+endif()
 
 if(CONFIG_ROUTER_STA_MSTP_ENABLE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE

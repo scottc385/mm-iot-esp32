@@ -13,10 +13,14 @@
 #include <stdio.h>
 
 #include "esp_heap_caps.h"
+#include "esp_err.h"
+#include "esp_system.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
 
+#include "mmhal_wlan.h"
 #include "mm_app_common.h"
 #include "mmosal.h"
 #include "mmwlan.h"
@@ -35,7 +39,10 @@
 #include "rs485_probe.h"
 #endif
 #include "router_service.h"
+#include "router_sta.h"
 #include "router_transport.h"
+#include "router_cli.h"
+#include "router_runtime_config.h"
 #include "udp_tbx_port.h"
 #if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
 #include "w5500_probe.h"
@@ -186,6 +193,7 @@ static uint32_t last_w5500_wir_ms;
 static bool w5500_ip_seen;
 #endif
 static uint32_t route_snapshot_seq;
+static volatile bool reboot_requested;
 
 enum {
     ROUTER_STA_TRANSPORT_SLOT_BIP0 = 0,
@@ -194,13 +202,7 @@ enum {
 
 static uint16_t router_sta_derive_local_net(uint16_t transport_slot)
 {
-    uint32_t net = (uint32_t)CONFIG_ROUTER_STA_NET_BLOCK * 10000U +
-                   (uint32_t)CONFIG_ROUTER_STA_NODE_ID * 10U +
-                   (uint32_t)transport_slot;
-    if (net == 0 || net >= 65535U) {
-        return 0;
-    }
-    return (uint16_t)net;
+    return router_runtime_config_derive_net(transport_slot);
 }
 
 static uint16_t router_sta_w5500_bip_net(void)
@@ -236,6 +238,29 @@ static void router_sta_print_memory(const char *tag)
 static int32_t get_link_rssi(void)
 {
     return mmwlan_get_rssi();
+}
+
+static const char *router_sta_tbx_origin_id(void)
+{
+    static char origin[12];
+    snprintf(origin, sizeof(origin), "ESP%u",
+             (unsigned)router_runtime_config_get()->node_id);
+    return origin;
+}
+
+static void router_sta_init_nvs(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        printf("NVS init requires erase err=0x%x\n", (unsigned)err);
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        printf("NVS init failed err=0x%x; using defaults\n", (unsigned)err);
+        return;
+    }
+    (void)router_runtime_config_load();
 }
 
 static bool router_sta_configure_service(void)
@@ -520,9 +545,40 @@ static void router_sta_print_route_snapshot(uint32_t now_ms)
     tb_router_service_for_each_route(&router_service, now_ms, router_sta_print_route, NULL);
 }
 
+void router_sta_request_reboot(void)
+{
+    reboot_requested = true;
+}
+
+static void router_sta_safe_reboot(void)
+{
+    printf("ROUTER_REBOOT begin\n");
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+    bip_port_close(&w5500_bip);
+#endif
+    udp_tbx_port_close(&udp_tbx);
+#if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
+    w5500_probe_stop_reset();
+#endif
+    printf("ROUTER_REBOOT wlan_stop\n");
+    app_wlan_stop();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    printf("ROUTER_REBOOT wlan_hard_reset\n");
+    mmhal_wlan_hard_reset();
+    vTaskDelay(pdMS_TO_TICKS(250));
+    printf("ROUTER_REBOOT esp_restart\n");
+    fflush(stdout);
+    esp_restart();
+}
+
 void app_main(void)
 {
     printf("\n\nESP32 HaLow Router STA (Built " __DATE__ " " __TIME__ ")\n\n");
+    router_sta_init_nvs();
+
+    const router_runtime_config boot_runtime_cfg = *router_runtime_config_get();
+    const router_runtime_config *runtime_cfg = &boot_runtime_cfg;
+
     printf("MVP milestone: HaLow STA + UDP/TBX router-service scaffold. peer=%s:%d local_port=%d\n",
            CONFIG_ROUTER_STA_UDP_PEER_IP,
            CONFIG_ROUTER_STA_UDP_PEER_PORT,
@@ -533,7 +589,7 @@ void app_main(void)
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned long)CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID : 0UL);
     printf("ROUTER_NUMBERING net_block=%u node_id=%u w5500_bip_net=%u w5500_bip_auto=%u mstp_net=%u mstp_auto=%u udp_tbx_net=%u\n",
            (unsigned)CONFIG_ROUTER_STA_NET_BLOCK,
-           (unsigned)CONFIG_ROUTER_STA_NODE_ID,
+           (unsigned)runtime_cfg->node_id,
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
            (unsigned)router_sta_w5500_bip_net(),
            CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO ? 1U : 0U,
@@ -549,6 +605,13 @@ void app_main(void)
            0U,
 #endif
            (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET);
+    printf("ROUTER_RUNTIME speed=%s w5500_dhcp=%u w5500_ip=%s w5500_netmask=%s w5500_gw=%s mstp=%u\n",
+           router_runtime_config_speed_name(runtime_cfg->speed),
+           runtime_cfg->w5500_dhcp ? 1U : 0U,
+           runtime_cfg->w5500_ip,
+           runtime_cfg->w5500_netmask,
+           runtime_cfg->w5500_gateway,
+           runtime_cfg->mstp_enable ? 1U : 0U);
 
     router_sta_print_memory("boot");
     app_wlan_init();
@@ -560,7 +623,7 @@ void app_main(void)
                            CONFIG_ROUTER_STA_UDP_LOCAL_PORT,
                            CONFIG_ROUTER_STA_UDP_PEER_IP,
                            CONFIG_ROUTER_STA_UDP_PEER_PORT,
-                           CONFIG_ROUTER_STA_TBX_ORIGIN_ID)) {
+                           router_sta_tbx_origin_id())) {
         printf("UDP_TBX unavailable; router scaffold will not run\n");
     }
 
@@ -584,16 +647,23 @@ void app_main(void)
 #endif
 
 #if CONFIG_ROUTER_STA_MSTP_ENABLE
-    if (!mstp_port_open(&mstp, router_sta_mstp_net())) {
+    if (runtime_cfg->mstp_enable && !mstp_port_open(&mstp, router_sta_mstp_net())) {
         printf("MSTP unavailable; continuing without field-side MS/TP\n");
+    } else if (!runtime_cfg->mstp_enable) {
+        printf("MSTP disabled by runtime config\n");
     }
     router_sta_print_memory("after_mstp");
 #endif
 
     (void)router_sta_configure_service();
     router_sta_print_memory("after_router_config");
+    router_cli_start();
 
     while (true) {
+        if (reboot_requested) {
+            router_sta_safe_reboot();
+        }
+
         uint32_t now = mmosal_get_time_ms();
         udp_tbx_port_poll(&udp_tbx, &router_service, CONFIG_ROUTER_STA_UDP_TBX_PORT_ID, now);
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
@@ -603,7 +673,9 @@ void app_main(void)
         rs485_probe_poll(now);
 #endif
 #if CONFIG_ROUTER_STA_MSTP_ENABLE
-        mstp_port_poll(&mstp, &router_service, CONFIG_ROUTER_STA_MSTP_PORT_ID, now);
+        if (runtime_cfg->mstp_enable) {
+            mstp_port_poll(&mstp, &router_service, CONFIG_ROUTER_STA_MSTP_PORT_ID, now);
+        }
 #endif
         tb_router_service_tick(&router_service, now);
         tb_router_service_drain_events(&router_service, router_sta_print_event, NULL);
@@ -620,7 +692,9 @@ void app_main(void)
             bip_port_print_status(&w5500_bip);
 #endif
 #if CONFIG_ROUTER_STA_MSTP_ENABLE
-            mstp_port_print_status(&mstp);
+            if (runtime_cfg->mstp_enable) {
+                mstp_port_print_status(&mstp);
+            }
 #endif
             router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();

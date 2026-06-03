@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "lwip/inet.h"
+#include "mmosal.h"
 #include "sdkconfig.h"
 #include "router_service.h"
 
@@ -17,7 +18,7 @@
 #define BIP_MAC_LEN 6u
 
 #ifndef CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
-#define CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES 1
+#define CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES 0
 #endif
 
 static uint16_t read_be16(const uint8_t *p)
@@ -111,6 +112,16 @@ bool bip_port_open(bip_port *port, uint16_t net, uint16_t udp_port)
 
     printf("BIP_OPEN net=%u bind=0.0.0.0:%u\n", (unsigned)net, (unsigned)udp_port);
     return true;
+}
+
+void bip_port_close(bip_port *port)
+{
+    if (!port || port->sock < 0) {
+        return;
+    }
+    close(port->sock);
+    port->sock = -1;
+    printf("BIP_CLOSE net=%u\n", (unsigned)port->net);
 }
 
 static void bip_port_send_npdu_to(bip_port *port,
@@ -268,6 +279,7 @@ void bip_port_poll(bip_port *port,
         putchar('\n');
 #endif
 
+        uint32_t handle_start_ms = mmosal_get_time_ms();
         int rc = tb_router_service_handle_frame(svc,
                                                 router_port_id,
                                                 npdu,
@@ -276,6 +288,12 @@ void bip_port_poll(bip_port *port,
                                                 sizeof(sadr),
                                                 0,
                                                 now_ms);
+        uint32_t handle_ms = mmosal_get_time_ms() - handle_start_ms;
+        port->handle_count++;
+        port->handle_total_ms += handle_ms;
+        if (handle_ms > port->handle_max_ms) {
+            port->handle_max_ms = handle_ms;
+        }
         if (rc >= 0) {
             port->rx_router_accepted++;
         }
@@ -290,11 +308,15 @@ void bip_port_print_status(const bip_port *port)
     if (!port) {
         return;
     }
-    printf("BIP_STATUS net=%u tx=%lu rx=%lu bad=%lu router_rx=%lu tx_errors=%lu\n",
+    uint32_t handle_avg_ms = port->handle_count ?
+        (port->handle_total_ms / port->handle_count) : 0;
+    printf("BIP_STATUS net=%u tx=%lu rx=%lu bad=%lu router_rx=%lu tx_errors=%lu handle_ms_avg=%lu handle_ms_max=%lu\n",
            (unsigned)port->net,
            (unsigned long)port->tx_frames,
            (unsigned long)port->rx_frames,
            (unsigned long)port->rx_bad,
            (unsigned long)port->rx_router_accepted,
-           (unsigned long)port->tx_errors);
+           (unsigned long)port->tx_errors,
+           (unsigned long)handle_avg_ms,
+           (unsigned long)port->handle_max_ms);
 }

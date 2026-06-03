@@ -17,8 +17,12 @@
 #include "mmwlan.h"
 #include "mmipal.h"
 #include "mmosal.h"
+#include "sdkconfig.h"
 #include "mm_app_loadconfig.h"
 #include "mm_app_regdb.h"
+#include "router_runtime_config.h"
+
+#include <stdio.h>
 
 
 #define COUNTRY_CODE "US"
@@ -50,8 +54,8 @@
 
 /* Static Network configuration */
 #ifndef STATIC_LOCAL_IP
-/** Statically configured IP address (if ENABLE_DHCP is not set). */
-#define STATIC_LOCAL_IP                 "192.168.50.2"
+/** Derive the MVP static HaLow STA IP from the configured router node ID. */
+#define ROUTER_STA_DERIVE_STATIC_LOCAL_IP 1
 #endif
 #ifndef STATIC_GATEWAY
 /** Statically configured gateway address (if ENABLE_DHCP is not set). */
@@ -64,8 +68,8 @@
 
 /* Static Network configuration */
 #ifndef STATIC_LOCAL_IP6
-/** Statically configured IP address (if ENABLE_AUTOCONFIG is not set). */
-#define STATIC_LOCAL_IP6                 "FE80::2"
+/** Derive the MVP static HaLow STA IPv6 address from the configured router node ID. */
+#define ROUTER_STA_DERIVE_STATIC_LOCAL_IP6 1
 #endif
 
 /*
@@ -81,6 +85,7 @@
 #define IPERF_TEST_PRESET_4MHZ_LOW   6
 #define IPERF_TEST_PRESET_4MHZ_MID   7
 #define IPERF_TEST_PRESET_4MHZ_HIGH  8
+#define IPERF_TEST_PRESET_8MHZ_HIGH  9
 
 /* Default: channel 13, 908.5 MHz, 1 MHz. */
 #ifndef IPERF_TEST_CHANNEL_PRESET
@@ -135,6 +140,14 @@ static const struct mmwlan_s1g_channel iperf_test_channels[] = {
     { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
     { 922000000, 10000, false, 70, 3, 40, 4, 36, 0, 0, 0 },
 };
+#elif IPERF_TEST_CHANNEL_PRESET == IPERF_TEST_PRESET_8MHZ_HIGH
+#define IPERF_TEST_CHANNEL_LABEL "channel=44 freq=924000000Hz bw=8MHz primary=channel42/923000000Hz"
+static const struct mmwlan_s1g_channel iperf_test_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+    { 922000000, 10000, false, 70, 3, 40, 4, 36, 0, 0, 0 },
+    { 924000000, 10000, false, 71, 4, 44, 8, 36, 0, 0, 0 },
+};
 #else
 #error Unsupported IPERF_TEST_CHANNEL_PRESET
 #endif
@@ -143,6 +156,41 @@ static const struct mmwlan_s1g_channel_list iperf_test_channel_list = {
     .country_code = "US",
     .num_channels = (sizeof(iperf_test_channels) / sizeof(iperf_test_channels[0])),
     .channels = iperf_test_channels,
+};
+
+static const struct mmwlan_s1g_channel slow_channels[] = {
+    { 908500000, 10000, false, 68, 1, 13, 1, 36, 0, 0, 0 },
+};
+
+static const struct mmwlan_s1g_channel medium_channels[] = {
+    { 918500000, 10000, false, 68, 1, 33, 1, 36, 0, 0, 0 },
+    { 919000000, 10000, false, 69, 2, 34, 2, 36, 0, 0, 0 },
+    { 918000000, 10000, false, 70, 3, 32, 4, 36, 0, 0, 0 },
+};
+
+static const struct mmwlan_s1g_channel fast_channels[] = {
+    { 922500000, 10000, false, 68, 1, 41, 1, 36, 0, 0, 0 },
+    { 923000000, 10000, false, 69, 2, 42, 2, 36, 0, 0, 0 },
+    { 922000000, 10000, false, 70, 3, 40, 4, 36, 0, 0, 0 },
+    { 924000000, 10000, false, 71, 4, 44, 8, 36, 0, 0, 0 },
+};
+
+static const struct mmwlan_s1g_channel_list slow_channel_list = {
+    .country_code = "US",
+    .num_channels = sizeof(slow_channels) / sizeof(slow_channels[0]),
+    .channels = slow_channels,
+};
+
+static const struct mmwlan_s1g_channel_list medium_channel_list = {
+    .country_code = "US",
+    .num_channels = sizeof(medium_channels) / sizeof(medium_channels[0]),
+    .channels = medium_channels,
+};
+
+static const struct mmwlan_s1g_channel_list fast_channel_list = {
+    .country_code = "US",
+    .num_channels = sizeof(fast_channels) / sizeof(fast_channels[0]),
+    .channels = fast_channels,
 };
 
 
@@ -154,7 +202,12 @@ static const struct mmwlan_s1g_channel_list iperf_test_channel_list = {
 void load_mmipal_init_args(struct mmipal_init_args *args)
 {
     /* Load default static IP in case we don't find the key */
+#ifdef ROUTER_STA_DERIVE_STATIC_LOCAL_IP
+    (void)snprintf(args->ip_addr, sizeof(args->ip_addr), "192.168.50.%u",
+                   (unsigned)router_runtime_config_get()->node_id);
+#else
     (void)mmosal_safer_strcpy(args->ip_addr, STATIC_LOCAL_IP, sizeof(args->ip_addr));
+#endif
 
     /* Load default netmask in case we don't find the key */
     (void)mmosal_safer_strcpy(args->netmask, STATIC_NETMASK, sizeof(args->netmask));
@@ -182,7 +235,12 @@ void load_mmipal_init_args(struct mmipal_init_args *args)
     }
 
     /* Load default static IPv6 in case we don't find the key */
+#ifdef ROUTER_STA_DERIVE_STATIC_LOCAL_IP6
+    (void)snprintf(args->ip6_addr, sizeof(args->ip6_addr), "FE80::%x",
+                   (unsigned)router_runtime_config_get()->node_id);
+#else
     (void)mmosal_safer_strcpy(args->ip6_addr, STATIC_LOCAL_IP6, sizeof(args->ip6_addr));
+#endif
 
     /* We set this as the by default IPv6 is set to disabled in @ref MMIPAL_INIT_ARGS_DEFAULT */
     args->ip6_mode = MMIPAL_IP6_AUTOCONFIG;
@@ -199,9 +257,25 @@ void load_mmipal_init_args(struct mmipal_init_args *args)
 
 const struct mmwlan_s1g_channel_list* load_channel_list(void)
 {
-    printf("IPERF test channel: country=%s " IPERF_TEST_CHANNEL_LABEL "\n",
-           iperf_test_channel_list.country_code);
-    return &iperf_test_channel_list;
+    const router_runtime_config *cfg = router_runtime_config_get();
+    switch (cfg->speed) {
+    case ROUTER_STA_SPEED_SLOW:
+        printf("IPERF test channel: speed=slow country=%s channel=13 freq=908500000Hz bw=1MHz\n",
+               slow_channel_list.country_code);
+        return &slow_channel_list;
+    case ROUTER_STA_SPEED_MEDIUM:
+        printf("IPERF test channel: speed=medium country=%s channel=32 freq=918000000Hz bw=4MHz primary=channel34/919000000Hz\n",
+               medium_channel_list.country_code);
+        return &medium_channel_list;
+    case ROUTER_STA_SPEED_FAST:
+        printf("IPERF test channel: speed=fast country=%s channel=44 freq=924000000Hz bw=8MHz primary=channel42/923000000Hz\n",
+               fast_channel_list.country_code);
+        return &fast_channel_list;
+    default:
+        printf("IPERF test channel: country=%s " IPERF_TEST_CHANNEL_LABEL "\n",
+               iperf_test_channel_list.country_code);
+        return &iperf_test_channel_list;
+    }
 }
 
 void load_mmwlan_sta_args(struct mmwlan_sta_args *sta_config)

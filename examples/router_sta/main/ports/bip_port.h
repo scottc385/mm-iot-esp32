@@ -19,6 +19,9 @@ typedef struct bip_port {
     uint32_t rx_bad;
     uint32_t rx_router_accepted;
     uint32_t tx_errors;
+    uint32_t handle_count;
+    uint32_t handle_total_ms;
+    uint32_t handle_max_ms;
     uint8_t tx_frame[BIP_PORT_MAX_FRAME];
     uint8_t rx_frame[BIP_PORT_MAX_FRAME];
 } bip_port;
@@ -26,6 +29,7 @@ typedef struct bip_port {
 extern const tb_router_transport_ops k_bip_router_ops;
 
 bool bip_port_open(bip_port *port, uint16_t net, uint16_t udp_port);
+void bip_port_close(bip_port *port);
 void bip_port_send_npdu_broadcast(bip_port *port, const uint8_t *npdu, size_t npdu_len);
 void bip_port_poll(bip_port *port,
                    tb_router_service *svc,

@@ -19,6 +19,7 @@
 #include "esp_eth_mac_w5500.h"
 #include "esp_eth_phy_w5500.h"
 #include "lwip/ip4_addr.h"
+#include "router_runtime_config.h"
 
 #define W5500_PROBE_GOT_IP_BIT BIT0
 #define W5500_PROBE_SPI_QUEUE_SIZE 12
@@ -60,16 +61,27 @@ static bool w5500_probe_parse_ipv4(const char *text, esp_ip4_addr_t *addr)
 
 static esp_err_t w5500_probe_configure_ipv4(esp_netif_t *netif)
 {
-#if CONFIG_ROUTER_STA_W5500_STATIC_IP_ENABLE
+    const router_runtime_config *cfg = router_runtime_config_get();
+
+    if (cfg->w5500_dhcp) {
+        esp_err_t err = esp_netif_dhcpc_start(netif);
+        if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+            printf("W5500_DHCP start failed err=0x%x\n", (unsigned)err);
+            return err;
+        }
+        printf("W5500_DHCP enabled\n");
+        return ESP_OK;
+    }
+
     esp_netif_ip_info_t ip_info = {0};
 
-    if (!w5500_probe_parse_ipv4(CONFIG_ROUTER_STA_W5500_STATIC_IP_ADDR, &ip_info.ip) ||
-        !w5500_probe_parse_ipv4(CONFIG_ROUTER_STA_W5500_STATIC_NETMASK, &ip_info.netmask) ||
-        !w5500_probe_parse_ipv4(CONFIG_ROUTER_STA_W5500_STATIC_GATEWAY, &ip_info.gw)) {
+    if (!w5500_probe_parse_ipv4(cfg->w5500_ip, &ip_info.ip) ||
+        !w5500_probe_parse_ipv4(cfg->w5500_netmask, &ip_info.netmask) ||
+        !w5500_probe_parse_ipv4(cfg->w5500_gateway, &ip_info.gw)) {
         printf("W5500_STATIC_IP invalid ip=%s netmask=%s gw=%s\n",
-               CONFIG_ROUTER_STA_W5500_STATIC_IP_ADDR,
-               CONFIG_ROUTER_STA_W5500_STATIC_NETMASK,
-               CONFIG_ROUTER_STA_W5500_STATIC_GATEWAY);
+               cfg->w5500_ip,
+               cfg->w5500_netmask,
+               cfg->w5500_gateway);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -86,14 +98,6 @@ static esp_err_t w5500_probe_configure_ipv4(esp_netif_t *netif)
     printf("W5500_STATIC_IP ip=" IPSTR " netmask=" IPSTR " gw=" IPSTR "\n",
            IP2STR(&ip_info.ip), IP2STR(&ip_info.netmask), IP2STR(&ip_info.gw));
     return ESP_OK;
-#else
-    esp_err_t err = esp_netif_dhcpc_start(netif);
-    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
-        printf("W5500_PROBE dhcp start failed err=0x%x\n", (unsigned)err);
-        return err;
-    }
-    return ESP_OK;
-#endif
 }
 
 static void w5500_probe_eth_event_handler(void *arg, esp_event_base_t event_base,
@@ -279,7 +283,7 @@ bool w5500_probe_start(void)
         &devcfg);
     w5500_config.int_gpio_num = CONFIG_ROUTER_STA_W5500_INT_GPIO;
 #if CONFIG_ROUTER_STA_W5500_INT_GPIO < 0
-    w5500_config.poll_period_ms = 10;
+    w5500_config.poll_period_ms = CONFIG_ROUTER_STA_W5500_POLL_PERIOD_MS;
 #endif
 
     eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
@@ -364,25 +368,39 @@ bool w5500_probe_start(void)
     }
     s_started = true;
 
-#if CONFIG_ROUTER_STA_W5500_STATIC_IP_ENABLE
-    printf("W5500_PROBE ready\n");
-#else
-    EventBits_t bits = xEventGroupWaitBits(s_event_group,
-                                           W5500_PROBE_GOT_IP_BIT,
-                                           pdFALSE,
-                                           pdFALSE,
-                                           pdMS_TO_TICKS(CONFIG_ROUTER_STA_W5500_WAIT_IP_TIMEOUT_MS));
-    if ((bits & W5500_PROBE_GOT_IP_BIT) == 0) {
-        printf("W5500_PROBE started; no DHCP address within %d ms\n",
-               CONFIG_ROUTER_STA_W5500_WAIT_IP_TIMEOUT_MS);
-    } else {
+    if (!router_runtime_config_get()->w5500_dhcp) {
         printf("W5500_PROBE ready\n");
+    } else {
+        EventBits_t bits = xEventGroupWaitBits(s_event_group,
+                                               W5500_PROBE_GOT_IP_BIT,
+                                               pdFALSE,
+                                               pdFALSE,
+                                               pdMS_TO_TICKS(CONFIG_ROUTER_STA_W5500_WAIT_IP_TIMEOUT_MS));
+        if ((bits & W5500_PROBE_GOT_IP_BIT) == 0) {
+            printf("W5500_PROBE started; no DHCP address within %d ms\n",
+                   CONFIG_ROUTER_STA_W5500_WAIT_IP_TIMEOUT_MS);
+        } else {
+            printf("W5500_PROBE ready\n");
+        }
     }
-#endif
     return true;
 
 fail:
     w5500_probe_cleanup(mac, phy, driver_installed, mac_owned, phy_owned);
     printf("W5500_PROBE failed; HaLow router continues\n");
     return false;
+}
+
+void w5500_probe_stop_reset(void)
+{
+    w5500_probe_cleanup(NULL, NULL, s_eth != NULL, false, false);
+#if CONFIG_ROUTER_STA_W5500_RST_GPIO >= 0
+    gpio_reset_pin(CONFIG_ROUTER_STA_W5500_RST_GPIO);
+    gpio_set_direction(CONFIG_ROUTER_STA_W5500_RST_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_level(CONFIG_ROUTER_STA_W5500_RST_GPIO, 0);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    gpio_set_level(CONFIG_ROUTER_STA_W5500_RST_GPIO, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    printf("W5500_RESET gpio=%d\n", CONFIG_ROUTER_STA_W5500_RST_GPIO);
+#endif
 }

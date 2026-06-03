@@ -24,6 +24,48 @@ menu "HaLow router STA"
             sensitive field transports such as MS/TP; the MS/TP profile uses
             5 ms to avoid adding router-loop latency to ReadProperty traffic.
 
+    choice ROUTER_STA_HALOW_CHANNEL_PRESET
+        prompt "HaLow channel preset"
+        default ROUTER_STA_HALOW_CHANNEL_1MHZ_LOW
+        help
+            Narrow the STA scan/connect channel list for demo and benchmark
+            builds. The AP must be configured to the same channel/bandwidth.
+
+        config ROUTER_STA_HALOW_CHANNEL_1MHZ_LOW
+            bool "1 MHz low: channel 13, 908.5 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_1MHZ_MID
+            bool "1 MHz mid: channel 25, 914.5 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_1MHZ_HIGH
+            bool "1 MHz high: channel 41, 922.5 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_2MHZ_MID
+            bool "2 MHz mid: channel 26, 915.0 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_2MHZ_HIGH
+            bool "2 MHz high: channel 42, 923.0 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_4MHZ_LOW
+            bool "4 MHz low: channel 24, 914.0 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_4MHZ_MID
+            bool "4 MHz mid: channel 32, 918.0 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_4MHZ_HIGH
+            bool "4 MHz high: channel 40, 922.0 MHz"
+
+        config ROUTER_STA_HALOW_CHANNEL_8MHZ_HIGH
+            bool "8 MHz high: channel 44, 924.0 MHz"
+    endchoice
+
+    config ROUTER_STA_CLI_ENABLE
+        bool "Enable ESP-IDF console router CLI"
+        default y
+        help
+            Starts the ESP-IDF console REPL and registers router-* commands
+            backed by NVS. Settings apply on the next reboot.
+
     config ROUTER_STA_TBX_ORIGIN_ID
         string "Router STA TBX origin ID"
         default "ESP1"
@@ -186,6 +228,14 @@ menu "HaLow router STA"
             routes behind field-side B/IP routers after an ESP restart, even if
             BACnet tools keep running and do not resend discovery. Set 0 to
             disable the W5500-side refresh probe.
+
+    config ROUTER_STA_W5500_POLL_PERIOD_MS
+        int "W5500 driver poll period in milliseconds"
+        default 10
+        depends on ROUTER_STA_W5500_PROBE_ENABLE
+        help
+            Used only when the W5500 interrupt GPIO is disabled. Lower values
+            reduce receive latency at the cost of more SPI polling.
 
     config ROUTER_STA_W5500_SPI_HOST
         int "W5500 SPI host"

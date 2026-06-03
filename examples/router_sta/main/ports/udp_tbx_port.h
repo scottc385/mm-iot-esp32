@@ -33,6 +33,9 @@ typedef struct udp_tbx_port {
     uint32_t route_hits;
     uint32_t route_misses;
     uint32_t tx_errors;
+    uint32_t handle_count;
+    uint32_t handle_total_ms;
+    uint32_t handle_max_ms;
     uint8_t tx_frame[UDP_TBX_PORT_MAX_FRAME];
     uint8_t rx_frame[UDP_TBX_PORT_MAX_FRAME];
 } udp_tbx_port;
@@ -44,6 +47,7 @@ bool udp_tbx_port_open(udp_tbx_port *port,
                        const char *peer_ip,
                        uint16_t peer_port,
                        const char *origin_id);
+void udp_tbx_port_close(udp_tbx_port *port);
 void udp_tbx_port_poll(udp_tbx_port *port,
                        tb_router_service *svc,
                        uint8_t router_port_id,
