@@ -28,6 +28,9 @@
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 #include "local_app_port.h"
 #endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+#include "mstp_port.h"
+#endif
 #if CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
 #include "rs485_probe.h"
 #endif
@@ -138,10 +141,29 @@
 #define CONFIG_ROUTER_STA_RS485_PROBE_ENABLE 0
 #endif
 
+#ifndef CONFIG_ROUTER_STA_MSTP_ENABLE
+#define CONFIG_ROUTER_STA_MSTP_ENABLE 0
+#endif
+
+#ifndef CONFIG_ROUTER_STA_MSTP_PORT_ID
+#define CONFIG_ROUTER_STA_MSTP_PORT_ID 4
+#endif
+
+#ifndef CONFIG_ROUTER_STA_MSTP_NET
+#define CONFIG_ROUTER_STA_MSTP_NET 10011
+#endif
+
+#ifndef CONFIG_ROUTER_STA_MSTP_NET_AUTO
+#define CONFIG_ROUTER_STA_MSTP_NET_AUTO 1
+#endif
+
 static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
 static bip_port w5500_bip;
+#endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+static mstp_port mstp;
 #endif
 #if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 static local_app_port local_app;
@@ -163,6 +185,7 @@ static uint32_t route_snapshot_seq;
 
 enum {
     ROUTER_STA_TRANSPORT_SLOT_BIP0 = 0,
+    ROUTER_STA_TRANSPORT_SLOT_MSTP0 = 1,
 };
 
 static uint16_t router_sta_derive_local_net(uint16_t transport_slot)
@@ -183,6 +206,16 @@ static uint16_t router_sta_w5500_bip_net(void)
     return net != 0 ? net : (uint16_t)CONFIG_ROUTER_STA_W5500_BIP_NET;
 #else
     return (uint16_t)CONFIG_ROUTER_STA_W5500_BIP_NET;
+#endif
+}
+
+static uint16_t router_sta_mstp_net(void)
+{
+#if CONFIG_ROUTER_STA_MSTP_NET_AUTO
+    uint16_t net = router_sta_derive_local_net(ROUTER_STA_TRANSPORT_SLOT_MSTP0);
+    return net != 0 ? net : (uint16_t)CONFIG_ROUTER_STA_MSTP_NET;
+#else
+    return (uint16_t)CONFIG_ROUTER_STA_MSTP_NET;
 #endif
 }
 
@@ -258,19 +291,41 @@ static bool router_sta_configure_service(void)
     }
 #endif
 
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+    if (mstp.active) {
+        ports[port_count++] = (tb_router_port_config){
+            .port_id = CONFIG_ROUTER_STA_MSTP_PORT_ID,
+            .net = mstp.net,
+            .kind = TB_ROUTER_TRANSPORT_MSTP,
+            .caps = TB_ROUTER_PORT_CAP_UNICAST | TB_ROUTER_PORT_CAP_BROADCAST,
+            .transport_state = &mstp,
+            .ops = &k_mstp_router_ops,
+            .static_dnets = NULL,
+            .static_dnet_count = 0,
+        };
+    }
+#endif
+
     bool ok = tb_router_service_configure(&router_service,
                                           NULL,
                                           ports,
                                           port_count,
                                           CONFIG_ROUTER_STA_DNET_TTL_MS,
                                           CONFIG_ROUTER_STA_LOG_LEVEL);
-    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u w5500_bip=%u w5500_net=%u local_app=%u local_net=%u\n",
+    printf("ROUTER_CONFIG %s ports=%u tbx_net=%u w5500_bip=%u w5500_net=%u mstp=%u mstp_net=%u local_app=%u local_net=%u\n",
            ok ? "ok" : "failed",
            (unsigned)port_count,
            (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET,
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
            w5500_bip.sock >= 0 ? 1U : 0U,
            w5500_bip.sock >= 0 ? (unsigned)w5500_bip.net : 0U,
+#else
+           0U,
+           0U,
+#endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+           mstp.active ? 1U : 0U,
+           mstp.active ? (unsigned)mstp.net : 0U,
 #else
            0U,
            0U,
@@ -472,12 +527,19 @@ void app_main(void)
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? 1U : 0U,
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned)CONFIG_ROUTER_STA_LOCAL_APP_NET : 0U,
            CONFIG_ROUTER_STA_LOCAL_APP_ENABLE ? (unsigned long)CONFIG_ROUTER_STA_LOCAL_APP_DEVICE_ID : 0UL);
-    printf("ROUTER_NUMBERING net_block=%u node_id=%u w5500_bip_net=%u w5500_bip_auto=%u udp_tbx_net=%u\n",
+    printf("ROUTER_NUMBERING net_block=%u node_id=%u w5500_bip_net=%u w5500_bip_auto=%u mstp_net=%u mstp_auto=%u udp_tbx_net=%u\n",
            (unsigned)CONFIG_ROUTER_STA_NET_BLOCK,
            (unsigned)CONFIG_ROUTER_STA_NODE_ID,
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
            (unsigned)router_sta_w5500_bip_net(),
            CONFIG_ROUTER_STA_W5500_BIP_NET_AUTO ? 1U : 0U,
+#else
+           0U,
+           0U,
+#endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+           (unsigned)router_sta_mstp_net(),
+           CONFIG_ROUTER_STA_MSTP_NET_AUTO ? 1U : 0U,
 #else
            0U,
            0U,
@@ -517,6 +579,13 @@ void app_main(void)
     router_sta_print_memory("after_rs485_probe");
 #endif
 
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+    if (!mstp_port_open(&mstp, router_sta_mstp_net())) {
+        printf("MSTP unavailable; continuing without field-side MS/TP\n");
+    }
+    router_sta_print_memory("after_mstp");
+#endif
+
     (void)router_sta_configure_service();
     router_sta_print_memory("after_router_config");
 
@@ -528,6 +597,9 @@ void app_main(void)
 #endif
 #if CONFIG_ROUTER_STA_RS485_PROBE_ENABLE
         rs485_probe_poll(now);
+#endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+        mstp_port_poll(&mstp, &router_service, CONFIG_ROUTER_STA_MSTP_PORT_ID, now);
 #endif
         tb_router_service_tick(&router_service, now);
         tb_router_service_drain_events(&router_service, router_sta_print_event, NULL);
@@ -542,6 +614,9 @@ void app_main(void)
             udp_tbx_port_print_status(&udp_tbx);
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
             bip_port_print_status(&w5500_bip);
+#endif
+#if CONFIG_ROUTER_STA_MSTP_ENABLE
+            mstp_port_print_status(&mstp);
 #endif
             router_sta_print_route_snapshot(now);
             router_sta_send_whois_router();

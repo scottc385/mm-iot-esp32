@@ -296,4 +296,104 @@ menu "HaLow router STA"
             Emit aggregate passive probe counters at this interval. Set 0 to
             disable summaries.
 
+    config ROUTER_STA_MSTP_ENABLE
+        bool "Enable BACnet MS/TP router transport"
+        default n
+        help
+            Opens the Proto-2 RS485 UART as a BACnet MS/TP master and
+            registers it as transport.mstp.0 in the router service. This is a
+            real field-side BACnet transport, not the passive RS485 probe.
+
+    config ROUTER_STA_MSTP_PORT_ID
+        int "MS/TP router port ID"
+        default 4
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_NET_AUTO
+        bool "Auto-derive MS/TP BACnet network number"
+        default y
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Derive transport.mstp.0's BACnet network number from the MVP
+            scheme: net_block * 10000 + node_id * 10 + transport_slot. MS/TP
+            #1 uses transport_slot 1.
+
+    config ROUTER_STA_MSTP_NET
+        int "MS/TP BACnet network number"
+        default 10011
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Explicit MS/TP network number used when ROUTER_STA_MSTP_NET_AUTO
+            is disabled.
+
+    config ROUTER_STA_MSTP_MAC
+        int "MS/TP MAC address"
+        range 0 127
+        default 3
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            MAC address used by the ESP32 on the local MS/TP bus. Proto-2
+            bring-up observed existing masters at low addresses, so this must
+            remain configurable.
+
+    config ROUTER_STA_MSTP_MAX_MASTER
+        int "MS/TP Max_Master"
+        range 1 127
+        default 127
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_MAX_INFO_FRAMES
+        int "MS/TP Max_Info_Frames"
+        range 1 16
+        default 1
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_UART_NUM
+        int "MS/TP UART number"
+        default 1
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_TX_GPIO
+        int "MS/TP UART TX GPIO"
+        default 10
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_RX_GPIO
+        int "MS/TP UART RX GPIO"
+        default 11
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_DE_GPIO
+        int "MS/TP RS485 driver-enable GPIO"
+        default 12
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_RE_N_GPIO
+        int "MS/TP RS485 receiver-enable active-low GPIO"
+        default 13
+        depends on ROUTER_STA_MSTP_ENABLE
+        help
+            Set to -1 if receiver enable is tied externally. Proto-2 uses a
+            separate active-low /RE pin.
+
+    config ROUTER_STA_MSTP_BAUD
+        int "MS/TP baud rate"
+        default 38400
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_RX_STREAM_SIZE
+        int "MS/TP UART RX stream buffer size"
+        default 4096
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_FSM_TASK_STACK_SIZE
+        int "MS/TP FSM task stack size"
+        default 4096
+        depends on ROUTER_STA_MSTP_ENABLE
+
+    config ROUTER_STA_MSTP_UART_TASK_STACK_SIZE
+        int "MS/TP UART task stack size"
+        default 3072
+        depends on ROUTER_STA_MSTP_ENABLE
+
 endmenu

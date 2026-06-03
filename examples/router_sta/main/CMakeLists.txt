@@ -62,6 +62,18 @@ if(CONFIG_ROUTER_STA_RS485_PROBE_ENABLE)
     list(APPEND src "ports/rs485_probe.c")
 endif()
 
+if(CONFIG_ROUTER_STA_MSTP_ENABLE)
+    list(APPEND src
+        "wbacnet/bacnet/basic/sys/mstimer.c"
+        "wbacnet/bacnet/basic/sys/ringbuf.c"
+        "wbacnet/bacnet/datalink/cobs.c"
+        "wbacnet/bacnet/datalink/crc.c"
+        "wbacnet/bacnet/datalink/dlmstp.c"
+        "wbacnet/bacnet/datalink/mstp.c"
+        "wbacnet/bacnet/datalink/mstptext.c"
+        "ports/mstp_port.c")
+endif()
+
 set(inc
     "src"
     "ports"
