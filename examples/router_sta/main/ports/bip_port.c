@@ -16,6 +16,10 @@
 #define BVLC_HEADER_LEN 4u
 #define BIP_MAC_LEN 6u
 
+#ifndef CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
+#define CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES 1
+#endif
+
 static uint16_t read_be16(const uint8_t *p)
 {
     return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
@@ -136,6 +140,7 @@ static void bip_port_send_npdu_to(bip_port *port,
     }
 
     port->tx_frames++;
+#if CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
     printf("TX_BIP net=%u npdu_len=%u bvlc_len=%u target=%s:%u function=0x%02x tx_frames=%lu\n",
            (unsigned)port->net,
            (unsigned)npdu_len,
@@ -144,6 +149,7 @@ static void bip_port_send_npdu_to(bip_port *port,
            (unsigned)ntohs(target->sin_port),
            (unsigned)function,
            (unsigned long)port->tx_frames);
+#endif
 }
 
 void bip_port_send_npdu_broadcast(bip_port *port, const uint8_t *npdu, size_t npdu_len)
@@ -187,10 +193,12 @@ static void bip_router_send_npdu(tb_router_service *svc,
             next_hop.len == BIP_MAC_LEN) {
             bip_sockaddr_from_mac(&target, next_hop.adr);
             function = BVLC_ORIGINAL_UNICAST_NPDU;
+#if CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
             printf("TX_BIP_NEXT_HOP dnet=%u next_hop=",
                    (unsigned)daddr->net);
             print_mac(next_hop.adr, next_hop.len);
             putchar('\n');
+#endif
         } else {
             target.sin_family = AF_INET;
             target.sin_addr.s_addr =
@@ -250,6 +258,7 @@ void bip_port_poll(bip_port *port,
         size_t npdu_len = (size_t)got - BVLC_HEADER_LEN;
 
         port->rx_frames++;
+#if CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
         printf("RX_BIP net=%u from=%s:%u npdu_len=%u sadr=",
                (unsigned)port->net,
                inet_ntoa(from.sin_addr),
@@ -257,6 +266,7 @@ void bip_port_poll(bip_port *port,
                (unsigned)npdu_len);
         print_mac(sadr, sizeof(sadr));
         putchar('\n');
+#endif
 
         int rc = tb_router_service_handle_frame(svc,
                                                 router_port_id,
@@ -269,7 +279,9 @@ void bip_port_poll(bip_port *port,
         if (rc >= 0) {
             port->rx_router_accepted++;
         }
+#if CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
         printf("RX_BIP_ROUTER rc=%d accepted=%lu\n", rc, (unsigned long)port->rx_router_accepted);
+#endif
     }
 }
 

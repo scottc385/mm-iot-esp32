@@ -39,6 +39,13 @@ menu "HaLow router STA"
         int "UDP/TBX router port ID"
         default 1
 
+    config ROUTER_STA_UDP_TBX_LOG_FRAMES
+        bool "Log each UDP/TBX routed frame"
+        default y
+        help
+            Disable for latency tests. Status counters and error/drop logs
+            remain enabled.
+
     config ROUTER_STA_NET_BLOCK
         int "Router BACnet network block"
         range 1 6
@@ -129,6 +136,14 @@ menu "HaLow router STA"
     config ROUTER_STA_W5500_BIP_PORT_ID
         int "W5500 BACnet/IP router port ID"
         default 3
+
+    config ROUTER_STA_W5500_BIP_LOG_FRAMES
+        bool "Log each W5500 BACnet/IP routed frame"
+        default y
+        depends on ROUTER_STA_W5500_BIP_ENABLE
+        help
+            Disable for latency tests. Status counters and error/drop logs
+            remain enabled.
 
     config ROUTER_STA_W5500_BIP_NET_AUTO
         bool "Auto-derive W5500 BACnet/IP network number"

@@ -9,6 +9,10 @@
 #include "lwip/inet.h"
 #include "tbx.h"
 
+#ifndef CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
+#define CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES 1
+#endif
+
 static void origin_id_from_string(uint8_t out[TBX_ORIGIN_ID_LEN], const char *origin_id)
 {
     memset(out, 0, TBX_ORIGIN_ID_LEN);
@@ -72,6 +76,7 @@ static void print_hex_prefix(const uint8_t *buf, size_t len, size_t max_len)
 
 static void udp_tbx_log_decoded_app_npdu(const uint8_t *npdu, size_t npdu_len)
 {
+#if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
     BACNET_ADDRESS daddr = {0};
     BACNET_ADDRESS saddr = {0};
     if (tb_router_npdu_decode_addresses(npdu, npdu_len, &daddr, &saddr)) {
@@ -95,6 +100,10 @@ static void udp_tbx_log_decoded_app_npdu(const uint8_t *npdu, size_t npdu_len)
                iam.segmentation,
                (unsigned)iam.vendor_id);
     }
+#else
+    (void)npdu;
+    (void)npdu_len;
+#endif
 }
 
 bool udp_tbx_port_open(udp_tbx_port *port,
@@ -273,6 +282,7 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
     }
 
     port->tx_frames++;
+#if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
     printf("TX_TBX npdu_len=%u tbx_len=%u target=%s:%u dnet=%u route=%s tx_frames=%lu\n",
            (unsigned)npdu_len,
            (unsigned)frame_len,
@@ -281,6 +291,7 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
            daddr ? (unsigned)daddr->net : 0U,
            route ? "hit" : "static",
            (unsigned long)port->tx_frames);
+#endif
 }
 
 static void udp_tbx_router_send_npdu(tb_router_service *svc,
@@ -339,17 +350,21 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         }
 
         port->rx_frames++;
+#if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
         printf("RX_TBX from=%s:%u bytes=%d origin=", inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
         print_origin_id(&origin);
         printf(" npdu_len=%u\n", (unsigned)npdu_len);
+#endif
 
         tb_router_route_hints hints = {0};
         if (tb_router_service_extract_route_hints(svc, npdu, npdu_len, &hints) && hints.count > 0) {
+#if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
             printf("RX_TBX_ROUTE_HINTS count=%u", (unsigned)hints.count);
             for (size_t i = 0; i < hints.count; i++) {
                 printf(" dnet=%u", (unsigned)hints.nets[i]);
             }
             putchar('\n');
+#endif
             for (size_t i = 0; i < hints.count; i++) {
                 udp_tbx_port_learn_route(port, hints.nets[i], &from, now_ms);
             }
@@ -368,7 +383,9 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         if (rc >= 0) {
             port->rx_router_accepted++;
         }
+#if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
         printf("RX_TBX_ROUTER rc=%d accepted=%lu\n", rc, (unsigned long)port->rx_router_accepted);
+#endif
     }
 }
 
