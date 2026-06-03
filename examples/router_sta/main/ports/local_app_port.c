@@ -20,6 +20,75 @@ static void encode_object_id(uint8_t *out, uint16_t object_type, uint32_t instan
     out[3] = (uint8_t)value;
 }
 
+static bool decode_object_id(const uint8_t *buf, uint16_t *object_type, uint32_t *instance)
+{
+    if (!buf || !object_type || !instance) {
+        return false;
+    }
+    uint32_t value = ((uint32_t)buf[0] << 24) |
+        ((uint32_t)buf[1] << 16) |
+        ((uint32_t)buf[2] << 8) |
+        (uint32_t)buf[3];
+    *object_type = (uint16_t)(value >> 22);
+    *instance = value & 0x3FFFFFU;
+    return true;
+}
+
+static size_t encode_character_string(uint8_t *out, size_t out_len, const char *value)
+{
+    size_t value_len = value ? strlen(value) : 0;
+    size_t payload_len = value_len + 1; /* Character set byte plus string bytes. */
+    if (!out || payload_len > 253) {
+        return 0;
+    }
+    if (payload_len < 5) {
+        if (out_len < 1 + payload_len) {
+            return 0;
+        }
+        out[0] = (uint8_t)((7U << 4) | payload_len);
+        out[1] = 0; /* ANSI X3.4 / UTF-8 compatible for our ASCII names. */
+        memcpy(&out[2], value ? value : "", value_len);
+        return 1 + payload_len;
+    }
+    if (out_len < 2 + payload_len) {
+        return 0;
+    }
+    out[0] = (uint8_t)((7U << 4) | 5U);
+    out[1] = (uint8_t)payload_len;
+    out[2] = 0;
+    memcpy(&out[3], value ? value : "", value_len);
+    return 2 + payload_len;
+}
+
+static bool parse_read_property_object_name(const uint8_t *apdu,
+                                            size_t apdu_len,
+                                            uint8_t *invoke_id,
+                                            uint32_t *device_id)
+{
+    if (!apdu || apdu_len < 11 ||
+        apdu[0] != PDU_TYPE_CONFIRMED_SERVICE_REQUEST ||
+        apdu[3] != SERVICE_CONFIRMED_READ_PROPERTY ||
+        apdu[4] != 0x0C ||
+        apdu[9] != 0x19 ||
+        apdu[10] != PROP_OBJECT_NAME) {
+        return false;
+    }
+
+    uint16_t object_type = 0;
+    uint32_t object_instance = 0;
+    if (!decode_object_id(&apdu[5], &object_type, &object_instance) ||
+        object_type != OBJECT_DEVICE) {
+        return false;
+    }
+    if (invoke_id) {
+        *invoke_id = apdu[2];
+    }
+    if (device_id) {
+        *device_id = object_instance;
+    }
+    return true;
+}
+
 void local_app_port_init(local_app_port *app,
                          tb_router_service *router_service,
                          uint8_t port_id,
@@ -93,6 +162,52 @@ static void local_app_submit_iam(local_app_port *app)
     }
 }
 
+static void local_app_submit_read_property_ack(local_app_port *app,
+                                               const BACNET_ADDRESS *request_source,
+                                               uint8_t invoke_id)
+{
+    if (!request_source || request_source->net == 0) {
+        return;
+    }
+
+    uint8_t npdu[LOCAL_APP_MAX_NPDU];
+    BACNET_NPDU_DATA npdu_data = {0};
+    BACNET_ADDRESS dest = *request_source;
+
+    npdu_data.protocol_version = BACNET_PROTOCOL_VERSION;
+    npdu_data.hop_count = 0xFF;
+
+    int offset = npdu_encode_pdu(npdu, &dest, NULL, &npdu_data);
+    if (offset <= 0 || (size_t)offset + 12 > sizeof(npdu)) {
+        return;
+    }
+
+    uint8_t *apdu = &npdu[offset];
+    apdu[0] = PDU_TYPE_COMPLEX_ACK;
+    apdu[1] = invoke_id;
+    apdu[2] = SERVICE_CONFIRMED_READ_PROPERTY;
+    apdu[3] = 0x0C;
+    encode_object_id(&apdu[4], OBJECT_DEVICE, app->device_id);
+    apdu[8] = 0x19;
+    apdu[9] = PROP_OBJECT_NAME;
+    apdu[10] = 0x3E;
+
+    size_t value_len = encode_character_string(&apdu[11], sizeof(npdu) - (size_t)offset - 12, app->object_name);
+    if (value_len == 0) {
+        return;
+    }
+
+    apdu[11 + value_len] = 0x3F;
+    size_t npdu_len = (size_t)offset + 12 + value_len;
+    if (local_app_submit(app, npdu, npdu_len)) {
+        printf("LOCAL_APP_RP_ACK net=%u device=%lu invoke=%u name=%s\n",
+               (unsigned)app->net,
+               (unsigned long)app->device_id,
+               (unsigned)invoke_id,
+               app->object_name);
+    }
+}
+
 static void local_app_send_npdu(void *user_ctx,
                                 tb_router_port *router_port,
                                 const uint8_t *pdu,
@@ -126,6 +241,13 @@ static void local_app_send_npdu(void *user_ctx,
         (apdu[0] & 0xF0) == PDU_TYPE_UNCONFIRMED_SERVICE_REQUEST &&
         apdu[1] == SERVICE_UNCONFIRMED_WHO_IS) {
         local_app_submit_iam(app);
+    }
+
+    uint8_t invoke_id = 0;
+    uint32_t device_id = 0;
+    if (parse_read_property_object_name(apdu, apdu_len, &invoke_id, &device_id) &&
+        device_id == app->device_id) {
+        local_app_submit_read_property_ack(app, &source, invoke_id);
     }
 }
 
