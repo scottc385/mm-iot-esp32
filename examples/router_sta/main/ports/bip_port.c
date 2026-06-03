@@ -146,6 +146,20 @@ static void bip_port_send_npdu_to(bip_port *port,
            (unsigned long)port->tx_frames);
 }
 
+void bip_port_send_npdu_broadcast(bip_port *port, const uint8_t *npdu, size_t npdu_len)
+{
+    if (!port || port->sock < 0 || !npdu || npdu_len == 0) {
+        return;
+    }
+
+    struct sockaddr_in target = {0};
+    target.sin_family = AF_INET;
+    target.sin_addr.s_addr =
+        parse_ipv4_or_broadcast(CONFIG_ROUTER_STA_W5500_BIP_BROADCAST_ADDR);
+    target.sin_port = htons(port->udp_port);
+    bip_port_send_npdu_to(port, npdu, npdu_len, &target, BVLC_ORIGINAL_BROADCAST_NPDU);
+}
+
 static void bip_router_send_npdu(tb_router_service *svc,
                                  void *user_ctx,
                                  tb_router_port *router_port,

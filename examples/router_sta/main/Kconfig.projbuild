@@ -153,6 +153,17 @@ menu "HaLow router STA"
             the W5500 subnet broadcast address instead of 255.255.255.255 so
             lwIP does not have to choose between HaLow and Ethernet netifs.
 
+    config ROUTER_STA_W5500_WIR_INTERVAL_MS
+        int "W5500 Who-Is-Router refresh interval in milliseconds"
+        default 30000
+        depends on ROUTER_STA_W5500_BIP_ENABLE
+        help
+            Broadcast Who-Is-Router-To-Network on the W5500 BACnet/IP side at
+            startup and then at this slow interval. This lets the ESP rebuild
+            routes behind field-side B/IP routers after an ESP restart, even if
+            BACnet tools keep running and do not resend discovery. Set 0 to
+            disable the W5500-side refresh probe.
+
     config ROUTER_STA_W5500_SPI_HOST
         int "W5500 SPI host"
         default 2

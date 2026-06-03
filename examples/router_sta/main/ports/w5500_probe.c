@@ -30,6 +30,14 @@ static EventGroupHandle_t s_event_group;
 static bool s_started;
 static bool s_event_handlers_registered;
 
+bool w5500_probe_has_ip(void)
+{
+    if (!s_event_group) {
+        return false;
+    }
+    return (xEventGroupGetBits(s_event_group) & W5500_PROBE_GOT_IP_BIT) != 0;
+}
+
 static bool w5500_probe_parse_ipv4(const char *text, esp_ip4_addr_t *addr)
 {
     unsigned int b0;

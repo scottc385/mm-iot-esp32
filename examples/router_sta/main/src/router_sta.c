@@ -141,10 +141,17 @@ static local_app_port local_app;
 static uint32_t router_advertise_seq;
 #endif
 static uint32_t router_probe_seq;
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+static uint32_t w5500_wir_seq;
+#endif
 #if CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET > 0
 static uint32_t debug_app_probe_seq;
 #endif
 static uint32_t last_status_ms;
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE && CONFIG_ROUTER_STA_W5500_WIR_INTERVAL_MS > 0
+static uint32_t last_w5500_wir_ms;
+static bool w5500_ip_seen;
+#endif
 static uint32_t route_snapshot_seq;
 
 enum {
@@ -285,6 +292,29 @@ static void router_sta_send_whois_router(void)
            (unsigned long)router_probe_seq, (unsigned)len);
     udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
 }
+
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
+static void router_sta_send_w5500_whois_router(void)
+{
+#if CONFIG_ROUTER_STA_W5500_WIR_INTERVAL_MS > 0
+    if (w5500_bip.sock < 0) {
+        return;
+    }
+
+    uint8_t npdu[64];
+    size_t len = tb_router_npdu_build_whois_router(npdu, sizeof(npdu));
+    if (len == 0) {
+        printf("TX_W5500_ROUTER_WIR build failed\n");
+        return;
+    }
+
+    w5500_wir_seq++;
+    printf("TX_W5500_ROUTER_WIR seq=%lu npdu_len=%u\n",
+           (unsigned long)w5500_wir_seq, (unsigned)len);
+    bip_port_send_npdu_broadcast(&w5500_bip, npdu, len);
+#endif
+}
+#endif
 
 static void router_sta_send_iam_router(void)
 {
@@ -503,6 +533,20 @@ void app_main(void)
             router_sta_send_iam_router();
             router_sta_send_debug_app_probe();
         }
+
+#if CONFIG_ROUTER_STA_W5500_BIP_ENABLE && CONFIG_ROUTER_STA_W5500_WIR_INTERVAL_MS > 0
+        bool w5500_ready = w5500_bip.sock >= 0;
+#if CONFIG_ROUTER_STA_W5500_PROBE_ENABLE
+        w5500_ready = w5500_ready && w5500_probe_has_ip();
+#endif
+        if (w5500_ready &&
+            (!w5500_ip_seen ||
+             now - last_w5500_wir_ms >= CONFIG_ROUTER_STA_W5500_WIR_INTERVAL_MS)) {
+            w5500_ip_seen = true;
+            last_w5500_wir_ms = now;
+            router_sta_send_w5500_whois_router();
+        }
+#endif
 
         mmosal_task_sleep(50);
     }

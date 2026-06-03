@@ -26,6 +26,7 @@ typedef struct bip_port {
 extern const tb_router_transport_ops k_bip_router_ops;
 
 bool bip_port_open(bip_port *port, uint16_t net, uint16_t udp_port);
+void bip_port_send_npdu_broadcast(bip_port *port, const uint8_t *npdu, size_t npdu_len);
 void bip_port_poll(bip_port *port,
                    tb_router_service *svc,
                    uint8_t router_port_id,
