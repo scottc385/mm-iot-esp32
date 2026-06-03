@@ -45,8 +45,29 @@ static void print_hex_bytes(const uint8_t *buf, size_t len)
     }
 }
 
+static void print_hex_prefix(const uint8_t *buf, size_t len, size_t max_len)
+{
+    size_t show_len = len < max_len ? len : max_len;
+    print_hex_bytes(buf, show_len);
+    if (len > show_len) {
+        printf("...");
+    }
+}
+
 static void udp_tbx_log_decoded_app_npdu(const uint8_t *npdu, size_t npdu_len)
 {
+    BACNET_ADDRESS daddr = {0};
+    BACNET_ADDRESS saddr = {0};
+    if (tb_router_npdu_decode_addresses(npdu, npdu_len, &daddr, &saddr)) {
+        printf("RX_TBX_NPDU dnet=%u dlen=%u snet=%u slen=%u raw=",
+               (unsigned)daddr.net,
+               (unsigned)daddr.len,
+               (unsigned)saddr.net,
+               (unsigned)saddr.len);
+        print_hex_prefix(npdu, npdu_len, 24);
+        putchar('\n');
+    }
+
     tb_router_iam_info iam = {0};
     if (tb_router_npdu_decode_iam(npdu, npdu_len, &iam)) {
         printf("RX_TBX_IAM device=%lu snet=%u sadr=",
@@ -307,9 +328,11 @@ void udp_tbx_port_poll(udp_tbx_port *port,
             printf("RX_TBX_ROUTE_HINTS count=%u", (unsigned)hints.count);
             for (size_t i = 0; i < hints.count; i++) {
                 printf(" dnet=%u", (unsigned)hints.nets[i]);
-                udp_tbx_port_learn_route(port, hints.nets[i], &from, now_ms);
             }
             putchar('\n');
+            for (size_t i = 0; i < hints.count; i++) {
+                udp_tbx_port_learn_route(port, hints.nets[i], &from, now_ms);
+            }
         }
         udp_tbx_log_decoded_app_npdu(npdu, npdu_len);
 
