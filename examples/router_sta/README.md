@@ -70,7 +70,7 @@ ROUTER_CONFIG ok ports=1 tbx_net=65000
 ROUTER_STA status link=up rssi=-20 wir_seq=3
 TX_ROUTER_WIR seq=4 npdu_len=7
 TX_TBX npdu_len=7 tbx_len=16 tx_frames=4
-RX_TBX from=192.168.50.1:5000 bytes=... origin=AP01 npdu_len=...
+RX_TBX from=192.168.50.1:5000 bytes=... origin=.... npdu_len=...
 RX_TBX_ROUTER rc=... accepted=...
 UDP_TBX_ROUTE_LEARN dnet=1001 peer=192.168.50.1:5000 total=1
 UDP_TBX_ROUTE_LEARN dnet=4001 peer=192.168.50.1:5000 total=2
@@ -96,6 +96,10 @@ ESP learned route: port=1 port_net=65000 dnet=4001
 ESP UDP/TBX adapter learned peer: dnet=4001 -> 192.168.50.1:5000
 ESP debug app probe sends routed Who-Is through learned peer: dnet=4001 route=hit
 ```
+
+`origin=....` is expected when talking to `router-linux`: its UDP/TBX
+transport hashes `router.node_id` into a binary 4-byte origin ID. The older Lua
+test responder used printable ASCII such as `AP01`.
 
 ## Source Sharing
 
