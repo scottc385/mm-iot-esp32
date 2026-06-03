@@ -34,6 +34,32 @@ static void print_origin_id(const tbx_origin_t *origin)
     }
 }
 
+static void print_hex_bytes(const uint8_t *buf, size_t len)
+{
+    if (!buf || len == 0) {
+        printf("-");
+        return;
+    }
+    for (size_t i = 0; i < len; i++) {
+        printf("%s%02x", i == 0 ? "" : ":", buf[i]);
+    }
+}
+
+static void udp_tbx_log_decoded_app_npdu(const uint8_t *npdu, size_t npdu_len)
+{
+    tb_router_iam_info iam = {0};
+    if (tb_router_npdu_decode_iam(npdu, npdu_len, &iam)) {
+        printf("RX_TBX_IAM device=%lu snet=%u sadr=",
+               (unsigned long)iam.device_id,
+               (unsigned)iam.snet);
+        print_hex_bytes(iam.sadr, iam.sadr_len);
+        printf(" max_apdu=%u segmentation=%d vendor=%u\n",
+               (unsigned)iam.max_apdu,
+               iam.segmentation,
+               (unsigned)iam.vendor_id);
+    }
+}
+
 bool udp_tbx_port_open(udp_tbx_port *port,
                        uint16_t local_port,
                        const char *peer_ip,
@@ -285,6 +311,7 @@ void udp_tbx_port_poll(udp_tbx_port *port,
             }
             putchar('\n');
         }
+        udp_tbx_log_decoded_app_npdu(npdu, npdu_len);
 
         uint8_t src_flags = origin.net_owner ? TB_ROUTER_SRC_FLAG_NET_OWNER : 0;
         int rc = tb_router_service_handle_frame(svc,
