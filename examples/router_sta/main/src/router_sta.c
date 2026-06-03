@@ -22,7 +22,9 @@
 #include "mmwlan.h"
 #include "bacnet/bacenum.h"
 #include "bacnet/npdu.h"
+#if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 #include "local_app_port.h"
+#endif
 #include "router_service.h"
 #include "router_transport.h"
 #include "udp_tbx_port.h"
@@ -93,10 +95,14 @@
 
 static tb_router_service router_service;
 static udp_tbx_port udp_tbx;
+#if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
 static local_app_port local_app;
-static uint32_t router_probe_seq;
 static uint32_t router_advertise_seq;
+#endif
+static uint32_t router_probe_seq;
+#if CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET > 0
 static uint32_t debug_app_probe_seq;
+#endif
 static uint32_t last_status_ms;
 static uint32_t route_snapshot_seq;
 
@@ -165,8 +171,13 @@ static bool router_sta_configure_service(void)
            ok ? "ok" : "failed",
            (unsigned)port_count,
            (unsigned)CONFIG_ROUTER_STA_UDP_TBX_NET,
+#if CONFIG_ROUTER_STA_LOCAL_APP_ENABLE
            local_app.active ? 1U : 0U,
            local_app.active ? (unsigned)local_app.net : 0U);
+#else
+           0U,
+           0U);
+#endif
     return ok;
 }
 
@@ -209,6 +220,7 @@ static void router_sta_send_iam_router(void)
 #endif
 }
 
+#if CONFIG_ROUTER_STA_DEBUG_APP_PROBE_DNET > 0
 static size_t router_sta_build_debug_whois_npdu(uint8_t *out, size_t out_cap, uint16_t dnet)
 {
     if (!out || out_cap < 16 || dnet == 0 || dnet == 0xffff) {
@@ -235,6 +247,7 @@ static size_t router_sta_build_debug_whois_npdu(uint8_t *out, size_t out_cap, ui
     out[header_len++] = SERVICE_UNCONFIRMED_WHO_IS;
     return (size_t)header_len;
 }
+#endif
 
 static void router_sta_send_debug_app_probe(void)
 {

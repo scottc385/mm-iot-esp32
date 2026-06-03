@@ -29,8 +29,11 @@ set(src
     "wbacnet/bacnet/abort.c"
     "wbacnet/bacnet/bacerror.c"
     "ports/udp_tbx_port.c"
-    "ports/local_app_port.c"
     "src/router_sta.c")
+
+if(CONFIG_ROUTER_STA_LOCAL_APP_ENABLE)
+    list(APPEND src "ports/local_app_port.c")
+endif()
 
 set(inc
     "src"
