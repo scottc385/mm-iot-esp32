@@ -283,12 +283,14 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
            (unsigned long)port->tx_frames);
 }
 
-static void udp_tbx_router_send_npdu(void *user_ctx,
+static void udp_tbx_router_send_npdu(tb_router_service *svc,
+                                     void *user_ctx,
                                      tb_router_port *router_port,
                                      const uint8_t *npdu,
                                      size_t npdu_len,
                                      const BACNET_ADDRESS *daddr)
 {
+    (void)svc;
     (void)user_ctx;
     udp_tbx_port *port = (udp_tbx_port *)tb_router_port_transport_state(router_port);
     udp_tbx_port_send_npdu(port, npdu, npdu_len, daddr);

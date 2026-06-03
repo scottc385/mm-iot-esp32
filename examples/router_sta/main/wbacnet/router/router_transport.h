@@ -14,6 +14,7 @@
 
 typedef struct tb_router_port tb_router_port;
 typedef struct tb_router_port_config tb_router_port_config;
+typedef struct tb_router_service tb_router_service;
 
 typedef enum {
     TB_ROUTER_TRANSPORT_BIP = 1,
@@ -46,7 +47,8 @@ static inline const char *tb_router_transport_kind_name(tb_router_transport_kind
 
 typedef struct {
     const char *name;
-    void (*send_npdu)(void *user_ctx,
+    void (*send_npdu)(tb_router_service *svc,
+                      void *user_ctx,
                       tb_router_port *port,
                       const uint8_t *pdu,
                       size_t len,

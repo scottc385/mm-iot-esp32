@@ -326,12 +326,14 @@ static void local_app_submit_simple_ack(local_app_port *app,
     }
 }
 
-static void local_app_send_npdu(void *user_ctx,
+static void local_app_send_npdu(tb_router_service *svc,
+                                void *user_ctx,
                                 tb_router_port *router_port,
                                 const uint8_t *pdu,
                                 size_t len,
                                 const BACNET_ADDRESS *daddr)
 {
+    (void)svc;
     (void)user_ctx;
     (void)daddr;
     local_app_port *app = (local_app_port *)tb_router_port_transport_state(router_port);

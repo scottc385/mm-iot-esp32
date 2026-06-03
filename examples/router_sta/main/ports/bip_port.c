@@ -146,13 +146,14 @@ static void bip_port_send_npdu_to(bip_port *port,
            (unsigned long)port->tx_frames);
 }
 
-static void bip_router_send_npdu(void *user_ctx,
+static void bip_router_send_npdu(tb_router_service *svc,
+                                 void *user_ctx,
                                  tb_router_port *router_port,
                                  const uint8_t *npdu,
                                  size_t npdu_len,
                                  const BACNET_ADDRESS *daddr)
 {
-    tb_router_service *svc = (tb_router_service *)user_ctx;
+    (void)user_ctx;
     bip_port *port = (bip_port *)tb_router_port_transport_state(router_port);
     if (!port || port->sock < 0) {
         return;
