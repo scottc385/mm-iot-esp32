@@ -259,11 +259,7 @@ void mmhal_wlan_set_spi_irq_enabled(bool enabled)
     if (enabled)
     {
         spi_irq_enable_count++;
-#ifdef CONFIG_MM_SPI_IRQ_FALLING_EDGE
-        gpio_set_intr_type(CONFIG_MM_SPI_IRQ, GPIO_INTR_NEGEDGE);
-#else
         gpio_set_intr_type(CONFIG_MM_SPI_IRQ, GPIO_INTR_LOW_LEVEL);
-#endif
     }
     else
     {
