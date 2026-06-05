@@ -1,9 +1,9 @@
 #
-# Optional diagnostic profile: expose an in-process BACnet local app on DNET
-# 5001 behind the ESP32 router STA. Keep disabled in the normal Heltec profile
-# until the Morse STA connect path is stable with the larger router build.
+# Optional diagnostic profile. The in-process BACnet local app is intentionally
+# disabled because the virtual Device object is not fully compliant and can
+# confuse client discovery/property reads.
 #
-CONFIG_ROUTER_STA_LOCAL_APP_ENABLE=y
+# CONFIG_ROUTER_STA_LOCAL_APP_ENABLE is not set
 
 #
 # The local-app overlay pulls in more router/BACnet code and previously crashed
