@@ -24,6 +24,10 @@
 #define W5500_PROBE_GOT_IP_BIT BIT0
 #define W5500_PROBE_SPI_QUEUE_SIZE 12
 
+#ifndef CONFIG_ROUTER_STA_W5500_IPV6_LINKLOCAL_ENABLE
+#define CONFIG_ROUTER_STA_W5500_IPV6_LINKLOCAL_ENABLE 0
+#endif
+
 static esp_netif_t *s_netif;
 static esp_eth_handle_t s_eth;
 static esp_eth_netif_glue_handle_t s_glue;
@@ -116,9 +120,11 @@ static void w5500_probe_eth_event_handler(void *arg, esp_event_base_t event_base
         break;
     case ETHERNET_EVENT_CONNECTED:
         printf("W5500_EVENT connected\n");
+#if CONFIG_ROUTER_STA_W5500_IPV6_LINKLOCAL_ENABLE
         if (s_netif) {
             (void)esp_netif_create_ip6_linklocal(s_netif);
         }
+#endif
         break;
     case ETHERNET_EVENT_DISCONNECTED:
         printf("W5500_EVENT disconnected\n");

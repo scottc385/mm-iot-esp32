@@ -9,13 +9,17 @@
 #include "lwip/inet.h"
 #include "mmosal.h"
 #include "sdkconfig.h"
+#include "esp_log.h"
 #include "router_service.h"
+#include "router_seg_diag.h"
 
 #define BVLC_TYPE_BIP 0x81u
 #define BVLC_ORIGINAL_UNICAST_NPDU 0x0au
 #define BVLC_ORIGINAL_BROADCAST_NPDU 0x0bu
 #define BVLC_HEADER_LEN 4u
 #define BIP_MAC_LEN 6u
+
+static const char *TAG = "router_seg_bip";
 
 #ifndef CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
 #define CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES 0
@@ -143,6 +147,27 @@ static void bip_port_send_npdu_to(bip_port *port,
     size_t frame_len = npdu_len + BVLC_HEADER_LEN;
     int sent = sendto(port->sock, port->tx_frame, frame_len, 0,
                       (const struct sockaddr *)target, sizeof(*target));
+#if ROUTER_SEG_DIAG_ENABLE
+    ESP_LOGI(TAG,
+             "TX_BIP_DIAG target=%s:%u bvlc_len=%u npdu_len=%u udp_payload=%u sendto_ret=%d errno=%d",
+             inet_ntoa(target->sin_addr),
+             (unsigned)ntohs(target->sin_port),
+             (unsigned)frame_len,
+             (unsigned)npdu_len,
+             (unsigned)frame_len,
+             sent,
+             sent == (int)frame_len ? 0 : errno);
+    router_seg_diag_log_npdu("TX_BIP_NPDU", npdu, npdu_len);
+    if (frame_len >= ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD) {
+        ESP_LOGW(TAG,
+                 "TX_BIP_MTU_WARN bvlc_len=%u udp_payload=%u ethernet_payload=%u safe_udp_payload=%u ethernet_mtu=%u",
+                 (unsigned)frame_len,
+                 (unsigned)frame_len,
+                 (unsigned)(frame_len + ROUTER_SEG_DIAG_IPV4_UDP_OVERHEAD),
+                 ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD,
+                 ROUTER_SEG_DIAG_ETHERNET_MTU);
+    }
+#endif
     if (sent != (int)frame_len) {
         printf("TX_BIP_ERR errno=%d npdu_len=%u bvlc_len=%u\n",
                errno, (unsigned)npdu_len, (unsigned)frame_len);
@@ -189,6 +214,21 @@ static void bip_router_send_npdu(tb_router_service *svc,
     if (!port || port->sock < 0) {
         return;
     }
+
+#if ROUTER_SEG_DIAG_ENABLE
+    BACNET_ADDRESS dtmp = {0};
+    BACNET_ADDRESS saddr = {0};
+    (void)tb_router_npdu_decode_addresses(npdu, npdu_len, &dtmp, &saddr);
+    ESP_LOGI(TAG,
+             "ROUTER_EMIT_BIP in_port=? out_port=%u dnet=%u snet=%u npdu_len=%u bvlc_len=%u safe_udp_payload=%u",
+             (unsigned)tb_router_port_id(router_port),
+             daddr ? (unsigned)daddr->net : 0u,
+             (unsigned)saddr.net,
+             (unsigned)npdu_len,
+             (unsigned)(npdu_len + BVLC_HEADER_LEN),
+             ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD);
+    router_seg_diag_log_npdu("ROUTER_EMIT_BIP_NPDU", npdu, npdu_len);
+#endif
 
     struct sockaddr_in target = {0};
     uint8_t function = BVLC_ORIGINAL_BROADCAST_NPDU;
@@ -267,8 +307,21 @@ void bip_port_poll(bip_port *port,
         bip_mac_from_sockaddr(sadr, &from);
         const uint8_t *npdu = &port->rx_frame[BVLC_HEADER_LEN];
         size_t npdu_len = (size_t)got - BVLC_HEADER_LEN;
+        uint16_t bvlc_len = read_be16(&port->rx_frame[2]);
 
         port->rx_frames++;
+#if ROUTER_SEG_DIAG_ENABLE
+        ESP_LOGI(TAG,
+                 "RX_BIP_DIAG net=%u from=%s:%u raw_bvlc_len=%u recv_len=%d npdu_len=%u function=0x%02x",
+                 (unsigned)port->net,
+                 inet_ntoa(from.sin_addr),
+                 (unsigned)ntohs(from.sin_port),
+                 (unsigned)bvlc_len,
+                 got,
+                 (unsigned)npdu_len,
+                 (unsigned)port->rx_frame[1]);
+        router_seg_diag_log_npdu("RX_BIP_NPDU", npdu, npdu_len);
+#endif
 #if CONFIG_ROUTER_STA_W5500_BIP_LOG_FRAMES
         printf("RX_BIP net=%u from=%s:%u npdu_len=%u sadr=",
                (unsigned)port->net,

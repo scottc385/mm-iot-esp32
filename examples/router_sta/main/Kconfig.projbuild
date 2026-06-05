@@ -66,6 +66,15 @@ menu "HaLow router STA"
             Starts the ESP-IDF console REPL and registers router-* commands
             backed by NVS. Settings apply on the next reboot.
 
+    config ROUTER_STA_HALOW_IPV6_ENABLE
+        bool "Enable HaLow IPv6 autoconfiguration"
+        default n
+        help
+            Enable IPv6 autoconfiguration on the Morse HaLow netif. Disabled
+            by default for the router MVP because the router uses IPv4 UDP/TBX
+            and BACnet/IP, and ESP-IDF/LwIP IPv6 ND6/MLDv6 timer handling has
+            caused repeat boot crashes during prototype testing.
+
     config ROUTER_STA_TBX_ORIGIN_ID
         string "Router STA TBX origin ID"
         default "ESP1"
@@ -139,6 +148,15 @@ menu "HaLow router STA"
         int "Router service log level"
         default 1
 
+    config ROUTER_STA_SEGMENT_DIAG_LOG
+        bool "Temporary segmented BACnet routing diagnostics"
+        default y
+        help
+            Temporary verbose diagnostics for segmented BACnet response
+            debugging. Logs B/IP and UDP/TBX lengths, sendto return values,
+            APDU type/invoke/segment flags, and MTU warnings without changing
+            routing behavior.
+
     config ROUTER_STA_DEBUG_APP_PROBE_DNET
         int "Debug routed application probe DNET"
         default 0
@@ -174,6 +192,16 @@ menu "HaLow router STA"
             Opens a BACnet/IP UDP socket on the W5500 Ethernet side and
             registers it as a router service port. This is the first field-side
             Ethernet transport for the ESP32 HaLow router MVP.
+
+    config ROUTER_STA_W5500_IPV6_LINKLOCAL_ENABLE
+        bool "Enable W5500 IPv6 link-local address"
+        default n
+        depends on ROUTER_STA_W5500_PROBE_ENABLE
+        help
+            Create an IPv6 link-local address on the W5500 Ethernet netif.
+            Disabled by default because the router uses IPv4 BACnet/IP and
+            ESP-IDF/LwIP IPv6 multicast state has caused boot-time crashes on
+            the W5500 path during prototype bring-up.
 
     config ROUTER_STA_W5500_BIP_PORT_ID
         int "W5500 BACnet/IP router port ID"

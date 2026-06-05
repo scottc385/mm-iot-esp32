@@ -4,9 +4,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "apps/ping/ping_sock.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "lwip/inet.h"
+#include "lwip/netdb.h"
+#include "lwip/ip_addr.h"
 #include "router_sta.h"
 #include "router_runtime_config.h"
 #include "sdkconfig.h"
@@ -200,6 +206,187 @@ static int cmd_router_reboot(int argc, char **argv)
     return 0;
 }
 
+typedef struct {
+    SemaphoreHandle_t done;
+} router_ping_ctx;
+
+static const char *router_ping_ipaddr_to_string(const ip_addr_t *addr, char *buf, size_t buf_len)
+{
+    const char *text = ipaddr_ntoa(addr);
+    if (!text) {
+        snprintf(buf, buf_len, "?");
+    } else {
+        snprintf(buf, buf_len, "%s", text);
+    }
+    return buf;
+}
+
+static void router_ping_success(esp_ping_handle_t hdl, void *args)
+{
+    (void)args;
+    uint32_t seqno = 0;
+    uint32_t ttl = 0;
+    uint32_t elapsed_ms = 0;
+    uint32_t recv_len = 0;
+    ip_addr_t target = IPADDR4_INIT(IPADDR_ANY);
+    char addr_text[48];
+
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TTL, &ttl, sizeof(ttl));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_ms, sizeof(elapsed_ms));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SIZE, &recv_len, sizeof(recv_len));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target, sizeof(target));
+
+    printf("PING_REPLY from=%s seq=%lu bytes=%lu ttl=%lu time_ms=%lu\n",
+           router_ping_ipaddr_to_string(&target, addr_text, sizeof(addr_text)),
+           (unsigned long)seqno,
+           (unsigned long)recv_len,
+           (unsigned long)ttl,
+           (unsigned long)elapsed_ms);
+}
+
+static void router_ping_timeout(esp_ping_handle_t hdl, void *args)
+{
+    (void)args;
+    uint32_t seqno = 0;
+    ip_addr_t target = IPADDR4_INIT(IPADDR_ANY);
+    char addr_text[48];
+
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target, sizeof(target));
+
+    printf("PING_TIMEOUT from=%s seq=%lu\n",
+           router_ping_ipaddr_to_string(&target, addr_text, sizeof(addr_text)),
+           (unsigned long)seqno);
+}
+
+static void router_ping_end(esp_ping_handle_t hdl, void *args)
+{
+    router_ping_ctx *ctx = (router_ping_ctx *)args;
+    uint32_t transmitted = 0;
+    uint32_t received = 0;
+    uint32_t duration_ms = 0;
+    ip_addr_t target = IPADDR4_INIT(IPADDR_ANY);
+    char addr_text[48];
+
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REQUEST, &transmitted, sizeof(transmitted));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REPLY, &received, sizeof(received));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_DURATION, &duration_ms, sizeof(duration_ms));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target, sizeof(target));
+
+    printf("PING_DONE target=%s transmitted=%lu received=%lu lost=%lu duration_ms=%lu\n",
+           router_ping_ipaddr_to_string(&target, addr_text, sizeof(addr_text)),
+           (unsigned long)transmitted,
+           (unsigned long)received,
+           (unsigned long)(transmitted - received),
+           (unsigned long)duration_ms);
+
+    if (ctx && ctx->done) {
+        xSemaphoreGive(ctx->done);
+    }
+}
+
+static bool router_ping_resolve_target(const char *target_text, ip_addr_t *target)
+{
+    if (!target_text || !target) {
+        return false;
+    }
+    if (ipaddr_aton(target_text, target)) {
+        return true;
+    }
+
+    struct addrinfo hints = {
+        .ai_family = AF_INET,
+        .ai_socktype = SOCK_STREAM,
+    };
+    struct addrinfo *result = NULL;
+    int rc = getaddrinfo(target_text, NULL, &hints, &result);
+    if (rc != 0 || !result) {
+        printf("DNS lookup failed target=%s rc=%d\n", target_text, rc);
+        return false;
+    }
+
+    const struct sockaddr_in *addr = (const struct sockaddr_in *)result->ai_addr;
+    inet_addr_to_ip4addr(ip_2_ip4(target), &addr->sin_addr);
+    IP_SET_TYPE_VAL(*target, IPADDR_TYPE_V4);
+    freeaddrinfo(result);
+    return true;
+}
+
+static int cmd_router_ping(int argc, char **argv)
+{
+    if (argc < 2 || argc > 3) {
+        printf("usage: router-ping <ip-or-host> [count]\n");
+        return 1;
+    }
+
+    long count = 4;
+    if (argc == 3) {
+        count = strtol(argv[2], NULL, 10);
+        if (count < 1 || count > 20) {
+            printf("count must be 1..20\n");
+            return 1;
+        }
+    }
+
+    ip_addr_t target = IPADDR4_INIT(IPADDR_ANY);
+    if (!router_ping_resolve_target(argv[1], &target)) {
+        return 1;
+    }
+
+    router_ping_ctx ctx = {
+        .done = xSemaphoreCreateBinary(),
+    };
+    if (!ctx.done) {
+        printf("ping semaphore allocation failed\n");
+        return 1;
+    }
+
+    esp_ping_config_t config = ESP_PING_DEFAULT_CONFIG();
+    config.target_addr = target;
+    config.count = (uint32_t)count;
+    config.interval_ms = 1000;
+    config.timeout_ms = 1000;
+    config.data_size = 32;
+
+    esp_ping_callbacks_t callbacks = {
+        .cb_args = &ctx,
+        .on_ping_success = router_ping_success,
+        .on_ping_timeout = router_ping_timeout,
+        .on_ping_end = router_ping_end,
+    };
+
+    esp_ping_handle_t ping = NULL;
+    esp_err_t err = esp_ping_new_session(&config, &callbacks, &ping);
+    if (err != ESP_OK) {
+        printf("ping session create failed err=0x%x\n", (unsigned)err);
+        vSemaphoreDelete(ctx.done);
+        return 1;
+    }
+
+    char addr_text[48];
+    printf("PING_START target=%s count=%ld\n",
+           router_ping_ipaddr_to_string(&target, addr_text, sizeof(addr_text)),
+           count);
+    err = esp_ping_start(ping);
+    if (err != ESP_OK) {
+        printf("ping start failed err=0x%x\n", (unsigned)err);
+        esp_ping_delete_session(ping);
+        vSemaphoreDelete(ctx.done);
+        return 1;
+    }
+
+    TickType_t wait_ticks = pdMS_TO_TICKS((uint32_t)count * 1500u + 2000u);
+    if (xSemaphoreTake(ctx.done, wait_ticks) != pdTRUE) {
+        printf("ping wait timeout; stopping session\n");
+        esp_ping_stop(ping);
+    }
+
+    esp_ping_delete_session(ping);
+    vSemaphoreDelete(ctx.done);
+    return 0;
+}
+
 static void register_cmd(const char *command, const char *help, esp_console_cmd_func_t func)
 {
     const esp_console_cmd_t cmd = {
@@ -244,6 +431,8 @@ void router_cli_start(void)
     register_cmd("router-mstp", "Alias for router-set-mstp", cmd_router_set_mstp);
     register_cmd("router.mstp", "Alias for router-set-mstp", cmd_router_set_mstp);
     register_cmd("router-reboot", "Reboot the ESP32", cmd_router_reboot);
+    register_cmd("router-ping", "Ping an IP/host: router-ping <ip-or-host> [count]", cmd_router_ping);
+    register_cmd("ping", "Alias for router-ping", cmd_router_ping);
     esp_console_register_help_command();
 
 #if defined(CONFIG_ESP_CONSOLE_UART_DEFAULT) || defined(CONFIG_ESP_CONSOLE_UART_CUSTOM)

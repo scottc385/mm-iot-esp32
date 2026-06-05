@@ -242,6 +242,7 @@ void load_mmipal_init_args(struct mmipal_init_args *args)
     (void)mmosal_safer_strcpy(args->ip6_addr, STATIC_LOCAL_IP6, sizeof(args->ip6_addr));
 #endif
 
+#if CONFIG_ROUTER_STA_HALOW_IPV6_ENABLE
     /* We set this as the by default IPv6 is set to disabled in @ref MMIPAL_INIT_ARGS_DEFAULT */
     args->ip6_mode = MMIPAL_IP6_AUTOCONFIG;
 
@@ -253,6 +254,10 @@ void load_mmipal_init_args(struct mmipal_init_args *args)
     {
         printf("Initialize IPv6 with static IP %s\n", args->ip6_addr);
     }
+#else
+    args->ip6_mode = MMIPAL_IP6_DISABLED;
+    printf("Initialize IPv6 disabled.\n");
+#endif
 }
 
 const struct mmwlan_s1g_channel_list* load_channel_list(void)

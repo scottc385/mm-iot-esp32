@@ -9,10 +9,14 @@
 #include "lwip/inet.h"
 #include "mmosal.h"
 #include "tbx.h"
+#include "esp_log.h"
+#include "router_seg_diag.h"
 
 #ifndef CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
 #define CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES 0
 #endif
+
+static const char *TAG = "router_seg_tbx";
 
 static void origin_id_from_string(uint8_t out[TBX_ORIGIN_ID_LEN], const char *origin_id)
 {
@@ -285,6 +289,29 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
 
     int sent = sendto(port->sock, port->tx_frame, frame_len, 0,
                       (const struct sockaddr *)target, sizeof(*target));
+#if ROUTER_SEG_DIAG_ENABLE
+    ESP_LOGI(TAG,
+             "TX_TBX_DIAG target=%s:%u npdu_len=%u tbx_len=%u udp_payload=%u dnet=%u route=%s sendto_ret=%d errno=%d",
+             inet_ntoa(target->sin_addr),
+             (unsigned)ntohs(target->sin_port),
+             (unsigned)npdu_len,
+             (unsigned)frame_len,
+             (unsigned)frame_len,
+             daddr ? (unsigned)daddr->net : 0u,
+             route ? "hit" : "static",
+             sent,
+             sent == (int)frame_len ? 0 : errno);
+    router_seg_diag_log_npdu("TX_TBX_NPDU", npdu, npdu_len);
+    if (frame_len >= ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD) {
+        ESP_LOGW(TAG,
+                 "TX_TBX_MTU_WARN tbx_len=%u udp_payload=%u ethernet_payload=%u safe_udp_payload=%u ethernet_mtu=%u",
+                 (unsigned)frame_len,
+                 (unsigned)frame_len,
+                 (unsigned)(frame_len + ROUTER_SEG_DIAG_IPV4_UDP_OVERHEAD),
+                 ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD,
+                 ROUTER_SEG_DIAG_ETHERNET_MTU);
+    }
+#endif
     if (sent != (int)frame_len) {
         printf("TX_TBX_ERR errno=%d npdu_len=%u tbx_len=%u\n",
                errno, (unsigned)npdu_len, (unsigned)frame_len);
@@ -315,6 +342,35 @@ static void udp_tbx_router_send_npdu(tb_router_service *svc,
     (void)svc;
     (void)user_ctx;
     udp_tbx_port *port = (udp_tbx_port *)tb_router_port_transport_state(router_port);
+#if ROUTER_SEG_DIAG_ENABLE
+    tbx_origin_t origin = {0};
+    BACNET_ADDRESS dtmp = {0};
+    BACNET_ADDRESS saddr = {0};
+    size_t tbx_len = 0;
+    if (port) {
+        origin.have_origin_id = true;
+        memcpy(origin.origin_id, port->origin_id, TBX_ORIGIN_ID_LEN);
+        tbx_len = npdu_len + 5u + TBX_ORIGIN_ID_LEN;
+    }
+    (void)tb_router_npdu_decode_addresses(npdu, npdu_len, &dtmp, &saddr);
+    ESP_LOGI(TAG,
+             "ROUTER_EMIT_TBX in_port=? out_port=%u dnet=%u snet=%u npdu_len=%u tbx_len=%u safe_udp_payload=%u",
+             (unsigned)tb_router_port_id(router_port),
+             daddr ? (unsigned)daddr->net : 0u,
+             (unsigned)saddr.net,
+             (unsigned)npdu_len,
+             (unsigned)tbx_len,
+             ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD);
+    if (tbx_len >= ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD) {
+        ESP_LOGW(TAG,
+                 "ROUTER_EMIT_TBX_MTU_WARN tbx_len=%u ethernet_payload=%u safe_udp_payload=%u ethernet_mtu=%u",
+                 (unsigned)tbx_len,
+                 (unsigned)(tbx_len + ROUTER_SEG_DIAG_IPV4_UDP_OVERHEAD),
+                 ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD,
+                 ROUTER_SEG_DIAG_ETHERNET_MTU);
+    }
+    router_seg_diag_log_npdu("ROUTER_EMIT_TBX_NPDU", npdu, npdu_len);
+#endif
     udp_tbx_port_send_npdu(port, npdu, npdu_len, daddr);
 }
 
@@ -361,6 +417,15 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         }
 
         port->rx_frames++;
+#if ROUTER_SEG_DIAG_ENABLE
+        ESP_LOGI(TAG,
+                 "RX_TBX_DIAG from=%s:%u tbx_len=%d npdu_len=%u",
+                 inet_ntoa(from.sin_addr),
+                 (unsigned)ntohs(from.sin_port),
+                 got,
+                 (unsigned)npdu_len);
+        router_seg_diag_log_npdu("RX_TBX_NPDU", npdu, npdu_len);
+#endif
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
         printf("RX_TBX from=%s:%u bytes=%d origin=", inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
         print_origin_id(&origin);
