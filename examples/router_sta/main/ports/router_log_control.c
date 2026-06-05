@@ -8,7 +8,7 @@
 
 static volatile bool s_bacnet_log;
 static volatile bool s_segment_diag_log = CONFIG_ROUTER_STA_SEGMENT_DIAG_LOG;
-static volatile bool s_status_log = true;
+static volatile bool s_status_log;
 
 bool router_log_get(router_log_flag flag)
 {
@@ -54,4 +54,3 @@ const char *router_log_name(router_log_flag flag)
         return "?";
     }
 }
-
