@@ -150,12 +150,13 @@ menu "HaLow router STA"
 
     config ROUTER_STA_SEGMENT_DIAG_LOG
         bool "Temporary segmented BACnet routing diagnostics"
-        default y
+        default n
         help
             Temporary verbose diagnostics for segmented BACnet response
             debugging. Logs B/IP and UDP/TBX lengths, sendto return values,
             APDU type/invoke/segment flags, and MTU warnings without changing
-            routing behavior.
+            routing behavior. This only controls the boot default; runtime can
+            toggle it with the router-log console command.
 
     config ROUTER_STA_DEBUG_APP_PROBE_DNET
         int "Debug routed application probe DNET"
@@ -215,6 +216,18 @@ menu "HaLow router STA"
             Disable for latency tests. Status counters and error/drop logs
             remain enabled.
 
+    config ROUTER_STA_W5500_BIP_MAX_APDU_CODE
+        int "Clamp W5500 BACnet/IP forwarded Confirmed-REQ max APDU code"
+        range 0 5
+        default 4
+        depends on ROUTER_STA_W5500_BIP_ENABLE
+        help
+            Upper bound applied to the max-APDU nibble of Confirmed-REQ APDUs
+            forwarded out the W5500 BACnet/IP port. Code 4 advertises 1024
+            octets and helps prevent field devices from emitting IPv4
+            fragmented BACnet segments on constrained ESP32/W5500 paths. Code
+            5 leaves 1476-octet requests unchanged.
+
     config ROUTER_STA_W5500_BIP_NET_AUTO
         bool "Auto-derive W5500 BACnet/IP network number"
         default y
@@ -241,10 +254,9 @@ menu "HaLow router STA"
         string "W5500 BACnet/IP broadcast address"
         default "255.255.255.255"
         help
-            IPv4 broadcast target for BACnet/IP Original-Broadcast-NPDU
-            frames on the W5500 side. On dual-interface ESP32 builds, prefer
-            the W5500 subnet broadcast address instead of 255.255.255.255 so
-            lwIP does not have to choose between HaLow and Ethernet netifs.
+            Fallback IPv4 broadcast target for BACnet/IP Original-Broadcast-NPDU
+            frames on the W5500 side. Normal operation derives the subnet
+            broadcast address from the active W5500 IP/netmask.
 
     config ROUTER_STA_W5500_WIR_INTERVAL_MS
         int "W5500 Who-Is-Router refresh interval in milliseconds"

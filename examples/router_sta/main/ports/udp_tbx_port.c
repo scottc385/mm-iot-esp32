@@ -10,6 +10,8 @@
 #include "mmosal.h"
 #include "tbx.h"
 #include "esp_log.h"
+#include "router_bacnet_trace.h"
+#include "router_log_control.h"
 #include "router_seg_diag.h"
 
 #ifndef CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
@@ -82,6 +84,9 @@ static void print_hex_prefix(const uint8_t *buf, size_t len, size_t max_len)
 static void udp_tbx_log_decoded_app_npdu(const uint8_t *npdu, size_t npdu_len)
 {
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
+    if (!router_log_get(ROUTER_LOG_STATUS)) {
+        return;
+    }
     BACNET_ADDRESS daddr = {0};
     BACNET_ADDRESS saddr = {0};
     if (tb_router_npdu_decode_addresses(npdu, npdu_len, &daddr, &saddr)) {
@@ -290,6 +295,7 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
     int sent = sendto(port->sock, port->tx_frame, frame_len, 0,
                       (const struct sockaddr *)target, sizeof(*target));
 #if ROUTER_SEG_DIAG_ENABLE
+    if (router_log_get(ROUTER_LOG_SEGMENT_DIAG)) {
     ESP_LOGI(TAG,
              "TX_TBX_DIAG target=%s:%u npdu_len=%u tbx_len=%u udp_payload=%u dnet=%u route=%s sendto_ret=%d errno=%d",
              inet_ntoa(target->sin_addr),
@@ -311,6 +317,7 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
                  ROUTER_SEG_DIAG_SAFE_UDP_PAYLOAD,
                  ROUTER_SEG_DIAG_ETHERNET_MTU);
     }
+    }
 #endif
     if (sent != (int)frame_len) {
         printf("TX_TBX_ERR errno=%d npdu_len=%u tbx_len=%u\n",
@@ -320,15 +327,18 @@ void udp_tbx_port_send_npdu(udp_tbx_port *port,
     }
 
     port->tx_frames++;
+    router_bacnet_trace_npdu("tx", "tbx", npdu, npdu_len);
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
-    printf("TX_TBX npdu_len=%u tbx_len=%u target=%s:%u dnet=%u route=%s tx_frames=%lu\n",
-           (unsigned)npdu_len,
-           (unsigned)frame_len,
-           inet_ntoa(target->sin_addr),
-           (unsigned)ntohs(target->sin_port),
-           daddr ? (unsigned)daddr->net : 0U,
-           route ? "hit" : "static",
-           (unsigned long)port->tx_frames);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("TX_TBX npdu_len=%u tbx_len=%u target=%s:%u dnet=%u route=%s tx_frames=%lu\n",
+               (unsigned)npdu_len,
+               (unsigned)frame_len,
+               inet_ntoa(target->sin_addr),
+               (unsigned)ntohs(target->sin_port),
+               daddr ? (unsigned)daddr->net : 0U,
+               route ? "hit" : "static",
+               (unsigned long)port->tx_frames);
+    }
 #endif
 }
 
@@ -343,6 +353,7 @@ static void udp_tbx_router_send_npdu(tb_router_service *svc,
     (void)user_ctx;
     udp_tbx_port *port = (udp_tbx_port *)tb_router_port_transport_state(router_port);
 #if ROUTER_SEG_DIAG_ENABLE
+    if (router_log_get(ROUTER_LOG_SEGMENT_DIAG)) {
     tbx_origin_t origin = {0};
     BACNET_ADDRESS dtmp = {0};
     BACNET_ADDRESS saddr = {0};
@@ -370,6 +381,7 @@ static void udp_tbx_router_send_npdu(tb_router_service *svc,
                  ROUTER_SEG_DIAG_ETHERNET_MTU);
     }
     router_seg_diag_log_npdu("ROUTER_EMIT_TBX_NPDU", npdu, npdu_len);
+    }
 #endif
     udp_tbx_port_send_npdu(port, npdu, npdu_len, daddr);
 }
@@ -417,7 +429,9 @@ void udp_tbx_port_poll(udp_tbx_port *port,
         }
 
         port->rx_frames++;
+        router_bacnet_trace_npdu("rx", "tbx", npdu, npdu_len);
 #if ROUTER_SEG_DIAG_ENABLE
+        if (router_log_get(ROUTER_LOG_SEGMENT_DIAG)) {
         ESP_LOGI(TAG,
                  "RX_TBX_DIAG from=%s:%u tbx_len=%d npdu_len=%u",
                  inet_ntoa(from.sin_addr),
@@ -425,21 +439,26 @@ void udp_tbx_port_poll(udp_tbx_port *port,
                  got,
                  (unsigned)npdu_len);
         router_seg_diag_log_npdu("RX_TBX_NPDU", npdu, npdu_len);
+        }
 #endif
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
-        printf("RX_TBX from=%s:%u bytes=%d origin=", inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
-        print_origin_id(&origin);
-        printf(" npdu_len=%u\n", (unsigned)npdu_len);
+        if (router_log_get(ROUTER_LOG_STATUS)) {
+            printf("RX_TBX from=%s:%u bytes=%d origin=", inet_ntoa(from.sin_addr), ntohs(from.sin_port), got);
+            print_origin_id(&origin);
+            printf(" npdu_len=%u\n", (unsigned)npdu_len);
+        }
 #endif
 
         tb_router_route_hints hints = {0};
         if (tb_router_service_extract_route_hints(svc, npdu, npdu_len, &hints) && hints.count > 0) {
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
-            printf("RX_TBX_ROUTE_HINTS count=%u", (unsigned)hints.count);
-            for (size_t i = 0; i < hints.count; i++) {
-                printf(" dnet=%u", (unsigned)hints.nets[i]);
+            if (router_log_get(ROUTER_LOG_STATUS)) {
+                printf("RX_TBX_ROUTE_HINTS count=%u", (unsigned)hints.count);
+                for (size_t i = 0; i < hints.count; i++) {
+                    printf(" dnet=%u", (unsigned)hints.nets[i]);
+                }
+                putchar('\n');
             }
-            putchar('\n');
 #endif
             for (size_t i = 0; i < hints.count; i++) {
                 udp_tbx_port_learn_route(port, hints.nets[i], &from, now_ms);
@@ -467,7 +486,9 @@ void udp_tbx_port_poll(udp_tbx_port *port,
             port->rx_router_accepted++;
         }
 #if CONFIG_ROUTER_STA_UDP_TBX_LOG_FRAMES
-        printf("RX_TBX_ROUTER rc=%d accepted=%lu\n", rc, (unsigned long)port->rx_router_accepted);
+        if (router_log_get(ROUTER_LOG_STATUS)) {
+            printf("RX_TBX_ROUTER rc=%d accepted=%lu\n", rc, (unsigned long)port->rx_router_accepted);
+        }
 #endif
     }
 }

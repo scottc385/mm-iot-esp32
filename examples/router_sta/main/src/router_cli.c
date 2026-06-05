@@ -13,6 +13,7 @@
 #include "lwip/inet.h"
 #include "lwip/netdb.h"
 #include "lwip/ip_addr.h"
+#include "router_log_control.h"
 #include "router_sta.h"
 #include "router_runtime_config.h"
 #include "sdkconfig.h"
@@ -51,6 +52,9 @@ static void print_config(void)
     printf("\n");
     printf("router.bip_net=%u\n", (unsigned)router_runtime_config_derive_net(0));
     printf("router.mstp_net=%u\n", (unsigned)router_runtime_config_derive_net(1));
+    printf("router.log.bacnet=%s\n", router_log_get(ROUTER_LOG_BACNET) ? "on" : "off");
+    printf("router.log.seg=%s\n", router_log_get(ROUTER_LOG_SEGMENT_DIAG) ? "on" : "off");
+    printf("router.log.status=%s\n", router_log_get(ROUTER_LOG_STATUS) ? "on" : "off");
     printf("note=settings apply after reboot\n");
 }
 
@@ -203,6 +207,60 @@ static int cmd_router_reboot(int argc, char **argv)
     printf("reboot requested\n");
     fflush(stdout);
     router_sta_request_reboot();
+    return 0;
+}
+
+static bool parse_log_flag(const char *text, router_log_flag *flag)
+{
+    if (!text || !flag) {
+        return false;
+    }
+    if (strcmp(text, "bacnet") == 0 || strcmp(text, "bip") == 0 || strcmp(text, "traffic") == 0) {
+        *flag = ROUTER_LOG_BACNET;
+        return true;
+    }
+    if (strcmp(text, "seg") == 0 || strcmp(text, "segment") == 0 || strcmp(text, "diag") == 0) {
+        *flag = ROUTER_LOG_SEGMENT_DIAG;
+        return true;
+    }
+    if (strcmp(text, "status") == 0 || strcmp(text, "stats") == 0) {
+        *flag = ROUTER_LOG_STATUS;
+        return true;
+    }
+    return false;
+}
+
+static void print_log_flags(void)
+{
+    printf("router.log.bacnet=%s\n", router_log_get(ROUTER_LOG_BACNET) ? "on" : "off");
+    printf("router.log.seg=%s\n", router_log_get(ROUTER_LOG_SEGMENT_DIAG) ? "on" : "off");
+    printf("router.log.status=%s\n", router_log_get(ROUTER_LOG_STATUS) ? "on" : "off");
+}
+
+static int cmd_router_log(int argc, char **argv)
+{
+    if (argc == 1) {
+        print_log_flags();
+        return 0;
+    }
+    if (argc != 3) {
+        printf("usage: router-log bacnet|seg|status on|off\n");
+        return 1;
+    }
+
+    router_log_flag flag;
+    bool enabled;
+    if (!parse_log_flag(argv[1], &flag)) {
+        printf("log name must be bacnet, seg, or status\n");
+        return 1;
+    }
+    if (!parse_bool(argv[2], &enabled)) {
+        printf("value must be on or off\n");
+        return 1;
+    }
+
+    router_log_set(flag, enabled);
+    printf("router.log.%s=%s\n", router_log_name(flag), enabled ? "on" : "off");
     return 0;
 }
 
@@ -431,6 +489,7 @@ void router_cli_start(void)
     register_cmd("router-mstp", "Alias for router-set-mstp", cmd_router_set_mstp);
     register_cmd("router.mstp", "Alias for router-set-mstp", cmd_router_set_mstp);
     register_cmd("router-reboot", "Reboot the ESP32", cmd_router_reboot);
+    register_cmd("router-log", "Runtime logs: router-log bacnet|seg|status on|off", cmd_router_log);
     register_cmd("router-ping", "Ping an IP/host: router-ping <ip-or-host> [count]", cmd_router_ping);
     register_cmd("ping", "Alias for router-ping", cmd_router_ping);
     esp_console_register_help_command();

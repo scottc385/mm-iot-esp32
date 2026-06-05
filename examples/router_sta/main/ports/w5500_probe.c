@@ -43,6 +43,29 @@ bool w5500_probe_has_ip(void)
     return (xEventGroupGetBits(s_event_group) & W5500_PROBE_GOT_IP_BIT) != 0;
 }
 
+bool w5500_probe_get_ip_info(uint32_t *ip_addr, uint32_t *netmask, uint32_t *gateway)
+{
+    if (!s_netif) {
+        return false;
+    }
+
+    esp_netif_ip_info_t ip_info = {0};
+    if (esp_netif_get_ip_info(s_netif, &ip_info) != ESP_OK) {
+        return false;
+    }
+
+    if (ip_addr) {
+        *ip_addr = ip_info.ip.addr;
+    }
+    if (netmask) {
+        *netmask = ip_info.netmask.addr;
+    }
+    if (gateway) {
+        *gateway = ip_info.gw.addr;
+    }
+    return ip_info.ip.addr != 0 && ip_info.netmask.addr != 0;
+}
+
 static bool w5500_probe_parse_ipv4(const char *text, esp_ip4_addr_t *addr)
 {
     unsigned int b0;

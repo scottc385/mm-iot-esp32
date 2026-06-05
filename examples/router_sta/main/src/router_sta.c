@@ -39,6 +39,7 @@
 #include "rs485_probe.h"
 #endif
 #include "router_service.h"
+#include "router_log_control.h"
 #include "router_sta.h"
 #include "router_transport.h"
 #include "router_cli.h"
@@ -380,8 +381,10 @@ static void router_sta_send_whois_router(void)
     }
 
     router_probe_seq++;
-    printf("TX_ROUTER_WIR seq=%lu npdu_len=%u\n",
-           (unsigned long)router_probe_seq, (unsigned)len);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("TX_ROUTER_WIR seq=%lu npdu_len=%u\n",
+               (unsigned long)router_probe_seq, (unsigned)len);
+    }
     udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
 }
 
@@ -401,8 +404,10 @@ static void router_sta_send_w5500_whois_router(void)
     }
 
     w5500_wir_seq++;
-    printf("TX_W5500_ROUTER_WIR seq=%lu npdu_len=%u\n",
-           (unsigned long)w5500_wir_seq, (unsigned)len);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("TX_W5500_ROUTER_WIR seq=%lu npdu_len=%u\n",
+               (unsigned long)w5500_wir_seq, (unsigned)len);
+    }
     bip_port_send_npdu_broadcast(&w5500_bip, npdu, len);
 #endif
 }
@@ -424,10 +429,12 @@ static void router_sta_send_iam_router(void)
     }
 
     router_advertise_seq++;
-    printf("TX_ROUTER_IAR seq=%lu nets=%u npdu_len=%u\n",
-           (unsigned long)router_advertise_seq,
-           (unsigned)local_app.net,
-           (unsigned)len);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("TX_ROUTER_IAR seq=%lu nets=%u npdu_len=%u\n",
+               (unsigned long)router_advertise_seq,
+               (unsigned)local_app.net,
+               (unsigned)len);
+    }
     udp_tbx_port_send_npdu_direct(&udp_tbx, npdu, len);
 #endif
 }
@@ -516,10 +523,12 @@ static void router_sta_print_event(void *arg, const tb_router_event *event)
         break;
     }
 
-    printf("ROUTER_EVENT type=%s port=%u net=%u\n",
-           type,
-           (unsigned)event->port_id,
-           (unsigned)event->net);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("ROUTER_EVENT type=%s port=%u net=%u\n",
+               type,
+               (unsigned)event->port_id,
+               (unsigned)event->net);
+    }
 }
 
 static void router_sta_print_route(void *arg, const tb_router_route_snapshot *route)
@@ -698,20 +707,22 @@ void app_main(void)
 
         if (now - last_status_ms >= CONFIG_ROUTER_STA_STATUS_INTERVAL_MS) {
             last_status_ms = now;
-            printf("ROUTER_STA status link=%s rssi=%ld wir_seq=%lu\n",
-                   app_link_is_up() ? "up" : "down",
-                   (long)get_link_rssi(),
-                   (unsigned long)router_probe_seq);
-            udp_tbx_port_print_status(&udp_tbx);
+            if (router_log_get(ROUTER_LOG_STATUS)) {
+                printf("ROUTER_STA status link=%s rssi=%ld wir_seq=%lu\n",
+                       app_link_is_up() ? "up" : "down",
+                       (long)get_link_rssi(),
+                       (unsigned long)router_probe_seq);
+                udp_tbx_port_print_status(&udp_tbx);
 #if CONFIG_ROUTER_STA_W5500_BIP_ENABLE
-            bip_port_print_status(&w5500_bip);
+                bip_port_print_status(&w5500_bip);
 #endif
 #if CONFIG_ROUTER_STA_MSTP_ENABLE
-            if (runtime_cfg->mstp_enable) {
-                mstp_port_print_status(&mstp);
-            }
+                if (runtime_cfg->mstp_enable) {
+                    mstp_port_print_status(&mstp);
+                }
 #endif
-            router_sta_print_route_snapshot(now);
+                router_sta_print_route_snapshot(now);
+            }
             router_sta_send_whois_router();
             router_sta_send_iam_router();
             router_sta_send_debug_app_probe();

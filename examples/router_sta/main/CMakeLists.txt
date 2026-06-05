@@ -30,6 +30,8 @@ set(src
     "wbacnet/bacnet/reject.c"
     "wbacnet/bacnet/abort.c"
     "wbacnet/bacnet/bacerror.c"
+    "ports/router_log_control.c"
+    "ports/router_bacnet_trace.c"
     "ports/router_seg_diag.c"
     "ports/udp_tbx_port.c"
     "src/router_sta.c")

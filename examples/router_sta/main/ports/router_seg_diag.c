@@ -6,6 +6,7 @@
 #include "bacnet/bacenum.h"
 #include "bacnet/npdu.h"
 #include "esp_log.h"
+#include "router_log_control.h"
 
 static const char *TAG = "router_seg";
 
@@ -87,6 +88,9 @@ static void format_addr(const BACNET_ADDRESS *addr, char *buf, size_t buf_len)
 void router_seg_diag_log_npdu(const char *tag, const uint8_t *npdu, size_t npdu_len)
 {
 #if ROUTER_SEG_DIAG_ENABLE
+    if (!router_log_get(ROUTER_LOG_SEGMENT_DIAG)) {
+        return;
+    }
     if (!npdu || npdu_len == 0) {
         ESP_LOGI(TAG, "%s npdu_len=%u empty", tag ? tag : "NPDU", (unsigned)npdu_len);
         return;
@@ -164,6 +168,9 @@ void router_seg_diag_log_addresses(const char *tag,
                                    const BACNET_ADDRESS *saddr)
 {
 #if ROUTER_SEG_DIAG_ENABLE
+    if (!router_log_get(ROUTER_LOG_SEGMENT_DIAG)) {
+        return;
+    }
     char daddr_text[80];
     char saddr_text[80];
     format_addr(daddr, daddr_text, sizeof(daddr_text));
@@ -175,4 +182,3 @@ void router_seg_diag_log_addresses(const char *tag,
     (void)saddr;
 #endif
 }
-

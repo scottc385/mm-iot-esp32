@@ -8,6 +8,7 @@
 #include "driver/uart.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "router_log_control.h"
 #include "sdkconfig.h"
 
 #define RS485_PROBE_RX_BUF_SIZE 512
@@ -291,9 +292,11 @@ static void rs485_probe_send_pattern(void)
     rs485_probe_set_tx_enable(false);
 
     s_tx_count++;
-    printf("RS485_TX seq=%" PRIu32 " bytes=%d pattern=55:aa:00:ff\n",
-           s_tx_count,
-           written);
+    if (router_log_get(ROUTER_LOG_STATUS)) {
+        printf("RS485_TX seq=%" PRIu32 " bytes=%d pattern=55:aa:00:ff\n",
+               s_tx_count,
+               written);
+    }
 }
 #endif
 
@@ -310,19 +313,21 @@ void rs485_probe_poll(uint32_t now_ms)
         now_ms - s_last_summary_ms >=
             CONFIG_ROUTER_STA_RS485_PROBE_SUMMARY_INTERVAL_MS) {
         s_last_summary_ms = now_ms;
-        printf("RS485_STATUS rx_bytes=%" PRIu32 " frames=%" PRIu32
-               " token=%" PRIu32 " pfm=%" PRIu32 " reply_poll=%" PRIu32
-               " data=%" PRIu32 " invalid=%" PRIu32 " noise=%" PRIu32
-               " parse_buf=%u\n",
-               s_rx_count,
-               s_mstp_frame_count,
-               s_token_count,
-               s_poll_for_master_count,
-               s_reply_to_poll_count,
-               s_data_frame_count,
-               s_invalid_count,
-               s_noise_count,
-               (unsigned)s_parse_len);
+        if (router_log_get(ROUTER_LOG_STATUS)) {
+            printf("RS485_STATUS rx_bytes=%" PRIu32 " frames=%" PRIu32
+                   " token=%" PRIu32 " pfm=%" PRIu32 " reply_poll=%" PRIu32
+                   " data=%" PRIu32 " invalid=%" PRIu32 " noise=%" PRIu32
+                   " parse_buf=%u\n",
+                   s_rx_count,
+                   s_mstp_frame_count,
+                   s_token_count,
+                   s_poll_for_master_count,
+                   s_reply_to_poll_count,
+                   s_data_frame_count,
+                   s_invalid_count,
+                   s_noise_count,
+                   (unsigned)s_parse_len);
+        }
     }
 #endif
 
